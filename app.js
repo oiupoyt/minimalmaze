@@ -1,5 +1,5 @@
 /**
- * MINIMALMAZE - Application Runtime & Low-Latency Canvas Renderer
+ * MINIMALMAZE - Application Runtime & Ultra-Low Latency Canvas Renderer
  */
 (function () {
   "use strict";
@@ -13,13 +13,16 @@
   const viewportContainer = document.getElementById("viewportContainer");
   const canvasWrapper = document.getElementById("canvasWrapper");
 
-  // Status & HUD
-  const statusDot = document.getElementById("statusDot");
-  const statusText = document.getElementById("statusText");
+  // Hero Timer & Status
+  const heroTimerContainer = document.getElementById("heroTimerContainer");
+  const timerModeTag = document.getElementById("timerModeTag");
+  const heroTime = document.getElementById("heroTime");
+  const btnCycleTimer = document.getElementById("btnCycleTimer");
+
+  // Tactical HUD
   const hudDiff = document.getElementById("hudDiff");
   const hudGrid = document.getElementById("hudGrid");
   const hudSteps = document.getElementById("hudSteps");
-  const hudTime = document.getElementById("hudTime");
 
   // Controls & Inputs
   const diffSlider = document.getElementById("diffSlider");
@@ -32,13 +35,21 @@
   const btnFullscreen = document.getElementById("btnFullscreen");
   const btnDownloadPng = document.getElementById("btnDownloadPng");
 
+  // Timer Mode Controls
+  const btnModeStopwatch = document.getElementById("btnModeStopwatch");
+  const btnModeCountdown = document.getElementById("btnModeCountdown");
+  const btnModeHidden = document.getElementById("btnModeHidden");
+  const countdownLimitRow = document.getElementById("countdownLimitRow");
+  const countdownLimitInput = document.getElementById("countdownLimitInput");
+  const btnAutoCountdown = document.getElementById("btnAutoCountdown");
+
   // Edge Touch Buttons
   const tapUp = document.getElementById("tapUp");
   const tapDown = document.getElementById("tapDown");
   const tapLeft = document.getElementById("tapLeft");
   const tapRight = document.getElementById("tapRight");
 
-  // Win Banner & Stats
+  // Win & Expired Banners
   const winBanner = document.getElementById("winBanner");
   const winTime = document.getElementById("winTime");
   const winSteps = document.getElementById("winSteps");
@@ -48,6 +59,10 @@
   const btnPlayAgain = document.getElementById("btnPlayAgain");
   const btnWinDownload = document.getElementById("btnWinDownload");
 
+  const expiredBanner = document.getElementById("expiredBanner");
+  const btnRetryExpired = document.getElementById("btnRetryExpired");
+  const btnSwitchStopwatch = document.getElementById("btnSwitchStopwatch");
+
   // Export Modal
   const exportModal = document.getElementById("exportModal");
   const btnExportClose = document.getElementById("btnExportClose");
@@ -55,6 +70,10 @@
   const btnConfirmDownload = document.getElementById("btnConfirmDownload");
   const chkIncludeSolution = document.getElementById("chkIncludeSolution");
   const chkIncludePlayerTrail = document.getElementById("chkIncludePlayerTrail");
+
+  // Offscreen static canvas for zero-latency blitting
+  const staticCanvas = document.createElement("canvas");
+  const staticCtx = staticCanvas.getContext("2d", { alpha: false });
 
   // State Variables
   let wasmEngine = null;
@@ -65,7 +84,21 @@
   let animFrameId = null;
   let lastTouchPos = null;
 
-  // Timing format helper
+  // Timer State: "stopwatch" | "countdown" | "hidden"
+  let timerMode = "stopwatch";
+  let countdownLimitSec = 60;
+
+  // Calculate a balanced countdown limit based on difficulty
+  function getAutoCountdownSec(diff) {
+    if (diff <= 10) return 15;
+    if (diff <= 50) return 30;
+    if (diff <= 150) return 60;
+    if (diff <= 350) return 120;
+    if (diff <= 650) return 240;
+    return 360;
+  }
+
+  // Timing format helper (MM:SS.t)
   function formatTime(ms) {
     const totalSecs = ms / 1000;
     const mins = Math.floor(totalSecs / 60);
@@ -82,11 +115,10 @@
       if (response.ok) {
         const bytes = await response.arrayBuffer();
         wasmEngine = await loadWasmEngine(bytes);
-        setStatus(true, "WASM CORE");
         return;
       }
     } catch (e) {
-      console.warn("Direct fetch of engine.wasm failed, checking embedded binary...", e);
+      console.warn("Direct fetch of engine.wasm failed, falling back to embedded binary...", e);
     }
 
     // 2. Try embedded base64 fallback (for file:// protocol)
@@ -99,7 +131,6 @@
           bytes[i] = binStr.charCodeAt(i);
         }
         wasmEngine = await loadWasmEngine(bytes);
-        setStatus(true, "WASM EMBED");
         return;
       } catch (e) {
         console.error("Embedded wasm load failed:", e);
@@ -113,16 +144,41 @@
         return generateJsMazeFallback(diff, seed);
       },
     };
-    setStatus(false, "JS ENGINE");
   }
 
-  function setStatus(isWasm, label) {
-    if (isWasm) {
-      statusDot.className = "status-dot online";
+  // Set Timer Mode
+  function setTimerMode(mode) {
+    timerMode = mode;
+    btnModeStopwatch.classList.toggle("active", mode === "stopwatch");
+    btnModeCountdown.classList.toggle("active", mode === "countdown");
+    btnModeHidden.classList.toggle("active", mode === "hidden");
+
+    if (mode === "countdown") {
+      countdownLimitRow.classList.remove("hidden");
+      timerModeTag.textContent = "COUNTDOWN";
+      btnCycleTimer.textContent = "[ TIMER: DOWN ]";
+      heroTimerContainer.classList.remove("hidden");
+    } else if (mode === "hidden") {
+      countdownLimitRow.classList.add("hidden");
+      btnCycleTimer.textContent = "[ TIMER: HIDE ]";
+      heroTimerContainer.classList.add("hidden");
     } else {
-      statusDot.className = "status-dot fallback";
+      countdownLimitRow.classList.add("hidden");
+      timerModeTag.textContent = "STOPWATCH";
+      btnCycleTimer.textContent = "[ TIMER: WATCH ]";
+      heroTimerContainer.classList.remove("hidden");
     }
-    statusText.textContent = label;
+
+    if (game) {
+      game.setTimerMode(mode, countdownLimitSec * 1000);
+      updateTimerDisplay();
+    }
+  }
+
+  function cycleTimerMode() {
+    if (timerMode === "stopwatch") setTimerMode("countdown");
+    else if (timerMode === "countdown") setTimerMode("hidden");
+    else setTimerMode("stopwatch");
   }
 
   // Generate Maze & Reset Game State
@@ -131,9 +187,7 @@
     updateDifficultyUI();
 
     const seed = BigInt(Math.floor(Math.random() * 1000000000) + 1);
-    const t0 = performance.now();
     currentMaze = wasmEngine.generate(currentDifficulty, seed);
-    const genMs = performance.now() - t0;
 
     game = new GameEngine(
       currentMaze.width,
@@ -143,16 +197,23 @@
       [currentMaze.endX, currentMaze.endY]
     );
 
+    // Auto-update countdown limit if in auto mode
+    countdownLimitSec = parseInt(countdownLimitInput.value, 10) || getAutoCountdownSec(currentDifficulty);
+    countdownLimitInput.value = countdownLimitSec;
+    game.setTimerMode(timerMode, countdownLimitSec * 1000);
+
     showSolution = false;
     btnToggleSolution.textContent = "[ SHOW SOLUTION ]";
     winBanner.classList.add("hidden");
+    expiredBanner.classList.add("hidden");
+    heroTimerContainer.classList.remove("warning");
 
     hudDiff.textContent = currentDifficulty;
     hudGrid.textContent = `${currentMaze.width}x${currentMaze.height}`;
     hudSteps.textContent = "0";
-    hudTime.textContent = "00:00.0";
+    updateTimerDisplay();
 
-    resizeAndRender();
+    rebuildStaticCacheAndRender();
   }
 
   function updateDifficultyUI() {
@@ -163,16 +224,18 @@
 
   // Handle Player Movement
   function handleMove(direction) {
-    if (!game || game.isWon) return;
+    if (!game || game.isWon || game.isTimeExpired()) return;
 
     const result = game.move(direction);
     if (result.moved) {
       hudSteps.textContent = game.steps;
-      render();
+      renderDynamic();
 
       if (result.won) {
         onGameWin();
       }
+    } else if (result.expired) {
+      onTimeExpired();
     }
   }
 
@@ -186,17 +249,29 @@
     winOptimal.textContent = optimalLen;
     winEff.textContent = `${eff}%`;
 
+    // Auto-reveal optimal route
+    showSolution = true;
+    btnToggleSolution.textContent = "[ HIDE SOLUTION ]";
+    renderDynamic();
+
     winBanner.classList.remove("hidden");
   }
 
-  // Canvas Geometry & High-DPI Rendering
-  function resizeAndRender() {
+  function onTimeExpired() {
+    expiredBanner.classList.remove("hidden");
+    heroTimerContainer.classList.add("warning");
+    heroTime.textContent = "00:00.0";
+    renderDynamic();
+  }
+
+  // Pre-render static background (passages, walls, subconscious grid, start/end marks)
+  // Run ONLY on maze generation or viewport resize for maximum performance!
+  function rebuildStaticCacheAndRender() {
     if (!currentMaze) return;
 
     const rect = viewportContainer.getBoundingClientRect();
     const dpr = window.devicePixelRatio || 1;
 
-    // Leave a small tactical margin
     const padding = 24;
     const availW = Math.max(100, rect.width - padding);
     const availH = Math.max(100, rect.height - padding);
@@ -212,79 +287,105 @@
     canvas.style.width = `${actualWidth}px`;
     canvas.style.height = `${actualHeight}px`;
 
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    render();
-  }
-
-  // Low-Latency Canvas Draw Routine
-  function render() {
-    if (!currentMaze || !game) return;
+    // Offscreen canvas setup
+    staticCanvas.width = canvas.width;
+    staticCanvas.height = canvas.height;
 
     const w = currentMaze.width;
     const h = currentMaze.height;
-    const rect = canvas.getBoundingClientRect();
-    const cellSize = rect.width / w;
+    const drawCellSize = cellSize * dpr;
 
     // 1. Clear background (Passages)
-    ctx.fillStyle = "#0a0a0a";
-    ctx.fillRect(0, 0, rect.width, rect.height);
+    staticCtx.fillStyle = "#0a0a0a";
+    staticCtx.fillRect(0, 0, staticCanvas.width, staticCanvas.height);
 
     // 2. Draw Walls
-    ctx.fillStyle = "#1e1e1e";
+    staticCtx.fillStyle = "#1e1e1e";
     const grid = currentMaze.grid;
     for (let y = 0; y < h; y++) {
       const rowOffset = y * w;
       for (let x = 0; x < w; x++) {
         if (grid[rowOffset + x] === 1) {
-          ctx.fillRect(
-            Math.floor(x * cellSize),
-            Math.floor(y * cellSize),
-            Math.ceil(cellSize),
-            Math.ceil(cellSize)
+          staticCtx.fillRect(
+            Math.floor(x * drawCellSize),
+            Math.floor(y * drawCellSize),
+            Math.ceil(drawCellSize),
+            Math.ceil(drawCellSize)
           );
         }
       }
     }
 
-    // 3. Draw Start & End Markers
+    // 3. Subtle Subconscious Hairline Grid (tiny faint white lines for each box)
+    staticCtx.strokeStyle = "rgba(255, 255, 255, 0.045)";
+    staticCtx.lineWidth = 1;
+    staticCtx.beginPath();
+    for (let x = 0; x <= w; x++) {
+      const px = Math.floor(x * drawCellSize) + 0.5;
+      staticCtx.moveTo(px, 0);
+      staticCtx.lineTo(px, staticCanvas.height);
+    }
+    for (let y = 0; y <= h; y++) {
+      const py = Math.floor(y * drawCellSize) + 0.5;
+      staticCtx.moveTo(0, py);
+      staticCtx.lineTo(staticCanvas.width, py);
+    }
+    staticCtx.stroke();
+
+    // 4. Start & End Markers
     // Start (Emerald)
-    ctx.fillStyle = "rgba(16, 185, 129, 0.25)";
-    ctx.fillRect(
-      Math.floor(currentMaze.startX * cellSize),
-      Math.floor(currentMaze.startY * cellSize),
-      Math.ceil(cellSize),
-      Math.ceil(cellSize)
+    staticCtx.fillStyle = "rgba(16, 185, 129, 0.28)";
+    staticCtx.fillRect(
+      Math.floor(currentMaze.startX * drawCellSize),
+      Math.floor(currentMaze.startY * drawCellSize),
+      Math.ceil(drawCellSize),
+      Math.ceil(drawCellSize)
     );
-    ctx.strokeStyle = "#10b981";
-    ctx.lineWidth = Math.max(1, cellSize * 0.12);
-    ctx.strokeRect(
-      Math.floor(currentMaze.startX * cellSize) + 0.5,
-      Math.floor(currentMaze.startY * cellSize) + 0.5,
-      Math.ceil(cellSize) - 1,
-      Math.ceil(cellSize) - 1
+    staticCtx.strokeStyle = "#10b981";
+    staticCtx.lineWidth = Math.max(1, drawCellSize * 0.12);
+    staticCtx.strokeRect(
+      Math.floor(currentMaze.startX * drawCellSize) + 0.5,
+      Math.floor(currentMaze.startY * drawCellSize) + 0.5,
+      Math.ceil(drawCellSize) - 1,
+      Math.ceil(drawCellSize) - 1
     );
 
     // End / Exit (Amber / Target)
-    ctx.fillStyle = "rgba(245, 158, 11, 0.25)";
-    ctx.fillRect(
-      Math.floor(currentMaze.endX * cellSize),
-      Math.floor(currentMaze.endY * cellSize),
-      Math.ceil(cellSize),
-      Math.ceil(cellSize)
+    staticCtx.fillStyle = "rgba(245, 158, 11, 0.28)";
+    staticCtx.fillRect(
+      Math.floor(currentMaze.endX * drawCellSize),
+      Math.floor(currentMaze.endY * drawCellSize),
+      Math.ceil(drawCellSize),
+      Math.ceil(drawCellSize)
     );
-    ctx.strokeStyle = "#f59e0b";
-    ctx.lineWidth = Math.max(1, cellSize * 0.12);
-    ctx.strokeRect(
-      Math.floor(currentMaze.endX * cellSize) + 0.5,
-      Math.floor(currentMaze.endY * cellSize) + 0.5,
-      Math.ceil(cellSize) - 1,
-      Math.ceil(cellSize) - 1
+    staticCtx.strokeStyle = "#f59e0b";
+    staticCtx.lineWidth = Math.max(1, drawCellSize * 0.12);
+    staticCtx.strokeRect(
+      Math.floor(currentMaze.endX * drawCellSize) + 0.5,
+      Math.floor(currentMaze.endY * drawCellSize) + 0.5,
+      Math.ceil(drawCellSize) - 1,
+      Math.ceil(drawCellSize) - 1
     );
 
-    // 4. Draw Shortest Path Solution (if enabled)
+    renderDynamic();
+  }
+
+  // Dynamic Layer: Blits cached static canvas and draws active trail and player cube (< 0.05ms)
+  function renderDynamic() {
+    if (!currentMaze || !game) return;
+
+    // 1. Instant GPU blit of entire static maze
+    ctx.drawImage(staticCanvas, 0, 0);
+
+    const dpr = window.devicePixelRatio || 1;
+    const w = currentMaze.width;
+    const rect = canvas.getBoundingClientRect();
+    const cellSize = (rect.width * dpr) / w;
+
+    // 2. Shortest Path Solution (Auto-revealed on win or when toggled)
     if (showSolution && currentMaze.solution && currentMaze.solution.length > 0) {
       ctx.strokeStyle = "#ef4444";
-      ctx.lineWidth = Math.max(1.5, cellSize * 0.25);
+      ctx.lineWidth = Math.max(2 * dpr, cellSize * 0.32);
       ctx.lineCap = "square";
       ctx.lineJoin = "miter";
       ctx.beginPath();
@@ -298,10 +399,9 @@
       ctx.stroke();
     }
 
-    // 5. Draw Player Trail
+    // 3. Player Trail (Prunes automatically on backtrack)
     if (game.trail && game.trail.length > 1) {
-      // Semi-transparent trail tiles
-      ctx.fillStyle = "rgba(56, 189, 248, 0.22)";
+      ctx.fillStyle = "rgba(56, 189, 248, 0.24)";
       for (let i = 0; i < game.trail.length; i++) {
         const [tx, ty] = game.trail[i];
         ctx.fillRect(
@@ -312,9 +412,8 @@
         );
       }
 
-      // Continuous trail line
-      ctx.strokeStyle = "rgba(56, 189, 248, 0.75)";
-      ctx.lineWidth = Math.max(1.5, cellSize * 0.28);
+      ctx.strokeStyle = "rgba(56, 189, 248, 0.85)";
+      ctx.lineWidth = Math.max(1.5 * dpr, cellSize * 0.28);
       ctx.lineCap = "square";
       ctx.lineJoin = "miter";
       ctx.beginPath();
@@ -328,21 +427,33 @@
       ctx.stroke();
     }
 
-    // 6. Draw Player (Electric Cyan Square)
+    // 4. Player Cube (Simplified, razor-sharp clean solid cyan square)
     const [px, py] = game.playerPos;
-    const pMargin = Math.max(1, cellSize * 0.15);
-    const pSize = Math.max(2, cellSize - 2 * pMargin);
+    const pMargin = Math.max(1 * dpr, cellSize * 0.14);
+    const pSize = Math.max(2 * dpr, cellSize - 2 * pMargin);
     const playerLeft = Math.floor(px * cellSize + pMargin);
     const playerTop = Math.floor(py * cellSize + pMargin);
 
     ctx.fillStyle = "#38bdf8";
     ctx.fillRect(playerLeft, playerTop, pSize, pSize);
+  }
 
-    // Crisp white inner core for high contrast
-    if (cellSize >= 8) {
-      ctx.strokeStyle = "#ffffff";
-      ctx.lineWidth = 1;
-      ctx.strokeRect(playerLeft + 0.5, playerTop + 0.5, pSize - 1, pSize - 1);
+  // Update Hero Timer UI
+  function updateTimerDisplay() {
+    if (!game) return;
+
+    if (timerMode === "countdown") {
+      const remainingMs = game.getRemainingTimeMs();
+      heroTime.textContent = formatTime(remainingMs);
+      if (game.startTime && remainingMs <= 10000 && remainingMs > 0) {
+        heroTimerContainer.classList.add("warning");
+      } else {
+        heroTimerContainer.classList.remove("warning");
+      }
+    } else if (timerMode === "stopwatch") {
+      const elapsedMs = game.getElapsedTimeMs();
+      heroTime.textContent = formatTime(elapsedMs);
+      heroTimerContainer.classList.remove("warning");
     }
   }
 
@@ -350,7 +461,11 @@
   function startLoop() {
     function tick() {
       if (game && !game.isWon && game.startTime) {
-        hudTime.textContent = formatTime(game.getElapsedTimeMs());
+        if (timerMode === "countdown" && game.isTimeExpired()) {
+          onTimeExpired();
+        } else {
+          updateTimerDisplay();
+        }
       }
       animFrameId = requestAnimationFrame(tick);
     }
@@ -359,7 +474,6 @@
 
   // Keyboard Navigation
   window.addEventListener("keydown", (e) => {
-    // If typing in input, don't capture navigation
     if (e.target.tagName === "INPUT") {
       if (e.key === "Enter") {
         e.target.blur();
@@ -402,6 +516,11 @@
       case "F":
         e.preventDefault();
         toggleFullscreen();
+        break;
+      case "t":
+      case "T":
+        e.preventDefault();
+        cycleTimerMode();
         break;
       case "Escape":
         exportModal.classList.add("hidden");
@@ -446,7 +565,7 @@
       const dy = t.clientY - lastTouchPos.y;
       const absX = Math.abs(dx);
       const absY = Math.abs(dy);
-      const threshold = 18;
+      const threshold = 16;
 
       if (Math.max(absX, absY) > threshold) {
         if (absX > absY) {
@@ -462,7 +581,7 @@
 
   // Direct Click on Maze to Step
   canvas.addEventListener("click", (e) => {
-    if (!currentMaze || !game || game.isWon) return;
+    if (!currentMaze || !game || game.isWon || game.isTimeExpired()) return;
     const rect = canvas.getBoundingClientRect();
     const cellSize = rect.width / currentMaze.width;
     const clickX = Math.floor((e.clientX - rect.left) / cellSize);
@@ -486,16 +605,60 @@
     if (game) {
       game.reset();
       hudSteps.textContent = "0";
-      hudTime.textContent = "00:00.0";
+      updateTimerDisplay();
       winBanner.classList.add("hidden");
-      render();
+      expiredBanner.classList.add("hidden");
+      heroTimerContainer.classList.remove("warning");
+      renderDynamic();
     }
   });
 
   btnToggleSolution.addEventListener("click", () => {
     showSolution = !showSolution;
     btnToggleSolution.textContent = showSolution ? "[ HIDE SOLUTION ]" : "[ SHOW SOLUTION ]";
-    render();
+    renderDynamic();
+  });
+
+  // Timer Mode Selectors
+  btnModeStopwatch.addEventListener("click", () => setTimerMode("stopwatch"));
+  btnModeCountdown.addEventListener("click", () => setTimerMode("countdown"));
+  btnModeHidden.addEventListener("click", () => setTimerMode("hidden"));
+  btnCycleTimer.addEventListener("click", cycleTimerMode);
+
+  countdownLimitInput.addEventListener("change", (e) => {
+    countdownLimitSec = Math.max(5, parseInt(e.target.value, 10) || 60);
+    if (game) game.setTimerMode("countdown", countdownLimitSec * 1000);
+    updateTimerDisplay();
+  });
+
+  btnAutoCountdown.addEventListener("click", () => {
+    countdownLimitSec = getAutoCountdownSec(currentDifficulty);
+    countdownLimitInput.value = countdownLimitSec;
+    if (game) game.setTimerMode("countdown", countdownLimitSec * 1000);
+    updateTimerDisplay();
+  });
+
+  btnRetryExpired.addEventListener("click", () => {
+    if (game) {
+      game.reset();
+      expiredBanner.classList.add("hidden");
+      heroTimerContainer.classList.remove("warning");
+      hudSteps.textContent = "0";
+      updateTimerDisplay();
+      renderDynamic();
+    }
+  });
+
+  btnSwitchStopwatch.addEventListener("click", () => {
+    setTimerMode("stopwatch");
+    if (game) {
+      game.reset();
+      expiredBanner.classList.add("hidden");
+      heroTimerContainer.classList.remove("warning");
+      hudSteps.textContent = "0";
+      updateTimerDisplay();
+      renderDynamic();
+    }
   });
 
   // Difficulty slider & input syncing
@@ -526,11 +689,11 @@
       if (root.requestFullscreen) {
         root.requestFullscreen().catch(() => {
           root.classList.toggle("fullscreen");
-          resizeAndRender();
+          rebuildStaticCacheAndRender();
         });
       } else {
         root.classList.toggle("fullscreen");
-        resizeAndRender();
+        rebuildStaticCacheAndRender();
       }
     } else {
       if (document.exitFullscreen) {
@@ -549,7 +712,7 @@
       root.classList.remove("fullscreen");
       btnFullscreen.textContent = "[ FULLSCREEN ]";
     }
-    setTimeout(resizeAndRender, 50);
+    setTimeout(rebuildStaticCacheAndRender, 50);
   });
 
   // Win Actions
@@ -562,8 +725,10 @@
       game.reset();
       winBanner.classList.add("hidden");
       hudSteps.textContent = "0";
-      hudTime.textContent = "00:00.0";
-      render();
+      showSolution = false;
+      btnToggleSolution.textContent = "[ SHOW SOLUTION ]";
+      updateTimerDisplay();
+      renderDynamic();
     }
   });
   btnWinDownload.addEventListener("click", () => {
@@ -642,7 +807,23 @@
       }
     }
 
-    // 3. Start & End
+    // 3. Subtle Subconscious Grid Lines
+    expCtx.strokeStyle = isPrint ? "rgba(0, 0, 0, 0.08)" : "rgba(255, 255, 255, 0.05)";
+    expCtx.lineWidth = 1;
+    expCtx.beginPath();
+    for (let x = 0; x <= w; x++) {
+      const px = x * cellSize + 0.5;
+      expCtx.moveTo(px, 0);
+      expCtx.lineTo(px, finalSize);
+    }
+    for (let y = 0; y <= h; y++) {
+      const py = y * cellSize + 0.5;
+      expCtx.moveTo(0, py);
+      expCtx.lineTo(finalSize, py);
+    }
+    expCtx.stroke();
+
+    // 4. Start & End
     expCtx.fillStyle = startFill;
     expCtx.fillRect(
       currentMaze.startX * cellSize,
@@ -659,10 +840,10 @@
       cellSize
     );
 
-    // 4. Solution path if requested
+    // 5. Solution path if requested
     if (includeSolution && currentMaze.solution && currentMaze.solution.length > 0) {
       expCtx.strokeStyle = solLine;
-      expCtx.lineWidth = Math.max(2, cellSize * 0.3);
+      expCtx.lineWidth = Math.max(2, cellSize * 0.32);
       expCtx.lineCap = "square";
       expCtx.lineJoin = "miter";
       expCtx.beginPath();
@@ -676,7 +857,7 @@
       expCtx.stroke();
     }
 
-    // 5. Player trail if requested
+    // 6. Player trail if requested
     if (includeTrail && game && game.trail && game.trail.length > 0) {
       expCtx.fillStyle = trailFill;
       for (let i = 0; i < game.trail.length; i++) {
@@ -684,7 +865,7 @@
         expCtx.fillRect(tx * cellSize, ty * cellSize, cellSize, cellSize);
       }
       expCtx.strokeStyle = trailLine;
-      expCtx.lineWidth = Math.max(2, cellSize * 0.25);
+      expCtx.lineWidth = Math.max(2, cellSize * 0.28);
       expCtx.lineCap = "square";
       expCtx.lineJoin = "miter";
       expCtx.beginPath();
@@ -710,7 +891,7 @@
   let resizeTimer = null;
   window.addEventListener("resize", () => {
     clearTimeout(resizeTimer);
-    resizeTimer = setTimeout(resizeAndRender, 60);
+    resizeTimer = setTimeout(rebuildStaticCacheAndRender, 60);
   });
 
   // App Initialization

@@ -3,30 +3,42 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <title>MINIMALMAZE // 2D Top-Down Labyrinth Engine</title>
+  <title>MINIMALMAZE // 2D Algorithmic Labyrinth Engine</title>
   <link rel="stylesheet" href="style.css">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;700;800&family=Space+Mono:wght@700&display=swap" rel="stylesheet">
 </head>
 <body>
   <div id="app" class="app-root">
-    <!-- Top Bar Navigation & Status -->
+    <!-- Top Bar Navigation -->
     <header class="topbar">
       <div class="brand">
-        <div class="logo-mark">MM</div>
+        <!-- Crisp Boxed Mini-Maze Logo -->
+        <div class="logo-box" aria-hidden="true" title="MINIMALMAZE">
+          <svg viewBox="0 0 24 24" width="22" height="22" class="mini-maze-icon">
+            <rect x="1" y="1" width="22" height="22" fill="#0b0b0b" stroke="#ffffff" stroke-width="1.8"/>
+            <path d="M5 5 h14 v6 h-8 v8 h8 M9 9 v4 h6" fill="none" stroke="#ffffff" stroke-width="1.6" stroke-linecap="square"/>
+            <rect x="4" y="4" width="3" height="3" fill="#38bdf8"/>
+            <rect x="17" y="17" width="3" height="3" fill="#f59e0b"/>
+          </svg>
+        </div>
         <div class="title-group">
           <h1 class="app-title">MINIMALMAZE</h1>
-          <span class="app-subtitle">2d top-down rust wasm engine</span>
+          <span class="app-subtitle">algorithmic 2d labyrinth</span>
         </div>
       </div>
 
-      <div class="engine-status">
-        <span class="status-dot online" id="statusDot"></span>
-        <span class="status-text" id="statusText">WASM CORE</span>
+      <!-- Prominent Center Digital Timer -->
+      <div class="topbar-center">
+        <div class="hero-timer" id="heroTimerContainer">
+          <span class="timer-mode-tag" id="timerModeTag">STOPWATCH</span>
+          <span class="timer-digits" id="heroTime">00:00.0</span>
+        </div>
       </div>
 
       <div class="quick-actions">
+        <button id="btnCycleTimer" class="btn btn-sm" title="Cycle Timer Mode: Stopwatch / Countdown / Hidden (T)">[ TIMER: WATCH ]</button>
         <button id="btnFullscreen" class="btn btn-sm" title="Toggle Fullscreen (F)">[ FULLSCREEN ]</button>
       </div>
     </header>
@@ -37,10 +49,12 @@
       <section class="viewport-container" id="viewportContainer">
         <div class="canvas-wrapper" id="canvasWrapper">
           <canvas id="mazeCanvas"></canvas>
+
+          <!-- Win Banner (Auto-reveals optimal route behind it) -->
           <div id="winBanner" class="win-banner hidden">
             <div class="win-card">
-              <div class="win-tag">STATUS: OBJECTIVE COMPLETE</div>
               <h2 class="win-title">MAZE SOLVED</h2>
+              <div class="optimal-hint">OPTIMAL ROUTE REVEALED IN CRIMSON</div>
               <div class="win-stats">
                 <div class="stat-item">
                   <span class="stat-label">TIME</span>
@@ -63,6 +77,18 @@
                 <button id="btnNextLevel" class="btn btn-primary">[ NEXT DIFFICULTY ]</button>
                 <button id="btnPlayAgain" class="btn">[ PLAY AGAIN ]</button>
                 <button id="btnWinDownload" class="btn">[ EXPORT PNG ]</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Time Expired Banner -->
+          <div id="expiredBanner" class="win-banner hidden">
+            <div class="win-card expired-card">
+              <h2 class="win-title expired-title">TIME EXPIRED</h2>
+              <div class="optimal-hint">COUNTDOWN REACHED ZERO</div>
+              <div class="win-actions">
+                <button id="btnRetryExpired" class="btn btn-primary">[ RETRY MAZE ]</button>
+                <button id="btnSwitchStopwatch" class="btn">[ SWITCH TO STOPWATCH ]</button>
               </div>
             </div>
           </div>
@@ -89,7 +115,6 @@
           <div class="hud-item"><span class="hud-label">DIFF</span> <span class="hud-val" id="hudDiff">50</span></div>
           <div class="hud-item"><span class="hud-label">GRID</span> <span class="hud-val" id="hudGrid">15x15</span></div>
           <div class="hud-item"><span class="hud-label">STEPS</span> <span class="hud-val" id="hudSteps">0</span></div>
-          <div class="hud-item"><span class="hud-label">TIME</span> <span class="hud-val" id="hudTime">00:00.0</span></div>
         </div>
       </section>
 
@@ -116,6 +141,23 @@
           </div>
         </div>
 
+        <!-- Timer Options Panel -->
+        <div class="deck-section">
+          <div class="section-header">
+            <span class="section-title">CHRONOMETER MODE</span>
+          </div>
+          <div class="timer-mode-selector">
+            <button class="btn btn-mode active" id="btnModeStopwatch">STOPWATCH</button>
+            <button class="btn btn-mode" id="btnModeCountdown">COUNTDOWN</button>
+            <button class="btn btn-mode" id="btnModeHidden">HIDDEN</button>
+          </div>
+          <div id="countdownLimitRow" class="slider-row hidden" style="margin-top: 8px;">
+            <label class="hud-label" style="font-size: 0.7rem;">LIMIT (S):</label>
+            <input type="number" id="countdownLimitInput" min="5" max="999" value="60" style="width: 70px;">
+            <button class="btn btn-sm" id="btnAutoCountdown" title="Auto-scale limit based on difficulty">[ AUTO ]</button>
+          </div>
+        </div>
+
         <!-- Action Commands -->
         <div class="deck-section">
           <div class="section-header">
@@ -137,7 +179,8 @@
           <div class="instructions-text">
             <span><b>MOBILE:</b> TAP SCREEN EDGES (▲ ▼ ◀ ▶) OR SWIPE TO MOVE</span>
             <span><b>DESKTOP:</b> WASD / ARROW KEYS OR CLICK TO STEP</span>
-            <span><b>TRAIL:</b> CYAN TRACE MARKS PATH AUTOMATICALLY</span>
+            <span><b>TRAIL:</b> UNWINDS AUTOMATICALLY WHEN BACKTRACKING</span>
+            <span><b>HOTKEYS:</b> R = REGENERATE | F = FULLSCREEN | T = TIMER</span>
           </div>
         </div>
       </aside>

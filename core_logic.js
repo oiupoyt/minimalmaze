@@ -42,11 +42,38 @@
       this.isWon = false;
       this.startTime = null;
       this.endTime = null;
+      this.timerMode = this.timerMode || "stopwatch"; // "stopwatch" | "countdown" | "hidden"
+      this.timeLimitMs = this.timeLimitMs || 0;
+    }
+
+    setTimerMode(mode, limitMs) {
+      this.timerMode = mode || "stopwatch";
+      this.timeLimitMs = Number(limitMs) || 0;
+    }
+
+    isTimeExpired() {
+      if (this.timerMode === "countdown" && this.startTime && this.timeLimitMs > 0) {
+        return (Date.now() - this.startTime) >= this.timeLimitMs;
+      }
+      return false;
+    }
+
+    getRemainingTimeMs() {
+      if (this.timerMode === "countdown" && this.timeLimitMs > 0) {
+        if (!this.startTime) return this.timeLimitMs;
+        const elapsed = (this.endTime || Date.now()) - this.startTime;
+        return Math.max(0, this.timeLimitMs - elapsed);
+      }
+      return 0;
     }
 
     move(direction) {
       if (this.isWon) {
         return { moved: false, won: true, pos: [...this.playerPos] };
+      }
+
+      if (this.isTimeExpired()) {
+        return { moved: false, expired: true, won: false, pos: [...this.playerPos] };
       }
 
       let dx = 0;
@@ -97,7 +124,21 @@
 
       this.playerPos = [nx, ny];
       this.steps += 1;
-      this.trail.push([nx, ny]);
+
+      // Backtracking trail pruning:
+      // If stepping onto the previous tile in trail, pop the current tile
+      const prevTile = this.trail.length >= 2 ? this.trail[this.trail.length - 2] : null;
+      if (prevTile && prevTile[0] === nx && prevTile[1] === ny) {
+        this.trail.pop();
+      } else {
+        // If stepping onto any earlier visited tile on active path, prune back to that tile
+        const existingIdx = this.trail.findIndex((pt) => pt[0] === nx && pt[1] === ny);
+        if (existingIdx !== -1) {
+          this.trail = this.trail.slice(0, existingIdx + 1);
+        } else {
+          this.trail.push([nx, ny]);
+        }
+      }
 
       // Check win condition
       if (nx === this.end[0] && ny === this.end[1]) {
@@ -200,10 +241,7 @@
     grid.fill(1); // 1 = wall
 
     const startCell = [0, 0];
-    const endCell = [cells - 1, cells - 1];
-
     const startTile = [2 * startCell[0] + 1, 2 * startCell[1] + 1];
-    const endTile = [2 * endCell[0] + 1, 2 * endCell[1] + 1];
 
     const visited = new Uint8Array(cells * cells);
     const stack = [];
@@ -256,50 +294,62 @@
       }
     }
 
-    // Solve using BFS for shortest solution
+    // Solve using BFS to find deepest dead-end or maximum distance tile
     const total = width * height;
+    const dist = new Int32Array(total);
+    dist.fill(-1);
     const prev = new Int32Array(total);
     prev.fill(-1);
-    const bfsVisited = new Uint8Array(total);
     const queue = [];
 
     const startIdx = startTile[1] * width + startTile[0];
-    const endIdx = endTile[1] * width + endTile[0];
-
-    bfsVisited[startIdx] = 1;
+    dist[startIdx] = 0;
     queue.push(startIdx);
+
+    let maxDist = 0;
+    let bestEndIdx = startIdx;
 
     while (queue.length > 0) {
       const curr = queue.shift();
-      if (curr === endIdx) break;
-
       const cx = curr % width;
       const cy = Math.floor(curr / width);
+      const d = dist[curr];
 
-      for (let d = 0; d < 4; d++) {
-        const nx = cx + DIRS[d][0];
-        const ny = cy + DIRS[d][1];
+      let openNeighbors = 0;
+      for (let dir = 0; dir < 4; dir++) {
+        const nx = cx + DIRS[dir][0];
+        const ny = cy + DIRS[dir][1];
         if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
           const nidx = ny * width + nx;
-          if (grid[nidx] === 0 && !bfsVisited[nidx]) {
-            bfsVisited[nidx] = 1;
-            prev[nidx] = curr;
-            queue.push(nidx);
+          if (grid[nidx] === 0) {
+            openNeighbors++;
+            if (dist[nidx] === -1) {
+              dist[nidx] = d + 1;
+              prev[nidx] = curr;
+              queue.push(nidx);
+            }
           }
         }
       }
+
+      const isDeadEnd = openNeighbors <= 1 && curr !== startIdx;
+      if (d > maxDist && isDeadEnd) {
+        maxDist = d;
+        bestEndIdx = curr;
+      } else if (d > maxDist && bestEndIdx === startIdx) {
+        bestEndIdx = curr;
+      }
     }
 
+    const endTile = [bestEndIdx % width, Math.floor(bestEndIdx / width)];
     const solution = [];
-    if (bfsVisited[endIdx]) {
-      let curr = endIdx;
-      while (curr !== -1) {
-        solution.push([curr % width, Math.floor(curr / width)]);
-        if (curr === startIdx) break;
-        curr = prev[curr];
-      }
-      solution.reverse();
+    let curr = bestEndIdx;
+    while (curr !== -1) {
+      solution.push([curr % width, Math.floor(curr / width)]);
+      if (curr === startIdx) break;
+      curr = prev[curr];
     }
+    solution.reverse();
 
     return {
       width,

@@ -46,7 +46,7 @@ pub struct Maze {
 impl Maze {
     pub fn generate(difficulty: u32, seed: u64) -> Self {
         let diff = difficulty.clamp(1, 1000);
-        
+
         // Scale cells: difficulty 1 -> 2x2 cells (5x5 grid); difficulty 1000 -> 50x50 cells (101x101 grid)
         let cells = 2 + (((diff as u64 - 1) * 48 + 499) / 999) as usize;
         let width = 2 * cells + 1;
@@ -55,26 +55,132 @@ impl Maze {
         let mut grid = vec![1u8; width * height];
         let mut rng = Rng::new(seed);
 
-        let start_cell = (0usize, 0usize);
-        let end_cell = (cells - 1, cells - 1);
+        if diff <= 40 {
+            // For low difficulties (1-40), use Backtracker with high straight bias for clear, beginner-friendly corridors
+            Self::generate_backtracker(cells, width, height, &mut grid, &mut rng, diff);
+        } else {
+            // For higher difficulties (41-1000), use Wilson's Algorithm (Loop-Erased Random Walk)
+            // producing a true Uniform Spanning Tree with maximum branch complexity and zero directional bias
+            Self::generate_wilsons(cells, width, height, &mut grid, &mut rng);
+        }
 
-        let start_tile = (2 * start_cell.0 + 1, 2 * start_cell.1 + 1);
-        let end_tile = (2 * end_cell.0 + 1, 2 * end_cell.1 + 1);
+        // Always place start at (1, 1)
+        let start_tile = (1usize, 1usize);
 
-        // Recursive Backtracker using explicit stack
+        // Find the deepest dead-end or cell with maximum graph distance from start using BFS
+        let (end_tile, solution) = Self::find_deepest_exit_and_solution(&grid, width, height, start_tile);
+
+        Maze {
+            width,
+            height,
+            grid,
+            start: start_tile,
+            end: end_tile,
+            solution,
+        }
+    }
+
+    /// Wilson's Algorithm: generates an exact Uniform Spanning Tree (UST)
+    fn generate_wilsons(
+        cells: usize,
+        width: usize,
+        _height: usize,
+        grid: &mut [u8],
+        rng: &mut Rng,
+    ) {
+        let total_cells = cells * cells;
+        let mut in_maze = vec![false; total_cells];
+        let mut next_dir = vec![255u8; total_cells];
+
+        // Carve all cell centers into paths
+        for cy in 0..cells {
+            for cx in 0..cells {
+                grid[(2 * cy + 1) * width + (2 * cx + 1)] = 0;
+            }
+        }
+
+        // Add an initial root cell to the maze (bottom-right or random)
+        let root = rng.next_usize(total_cells);
+        in_maze[root] = true;
+        let mut in_maze_count = 1;
+
+        const DIRS: [(isize, isize); 4] = [(0, -1), (1, 0), (0, 1), (-1, 0)];
+
+        // Loop until all cells are connected
+        for start_cell in 0..total_cells {
+            if in_maze[start_cell] {
+                continue;
+            }
+
+            // Perform loop-erased random walk
+            let mut curr = start_cell;
+            while !in_maze[curr] {
+                let cx = curr % cells;
+                let cy = curr / cells;
+
+                // Pick a valid random neighbor direction
+                let mut valid_dirs = [0usize; 4];
+                let mut valid_count = 0;
+
+                for (d, &(dx, dy)) in DIRS.iter().enumerate() {
+                    let nx = cx as isize + dx;
+                    let ny = cy as isize + dy;
+                    if nx >= 0 && nx < cells as isize && ny >= 0 && ny < cells as isize {
+                        valid_dirs[valid_count] = d;
+                        valid_count += 1;
+                    }
+                }
+
+                let chosen_d = valid_dirs[rng.next_usize(valid_count)];
+                next_dir[curr] = chosen_d as u8;
+
+                let nx = (cx as isize + DIRS[chosen_d].0) as usize;
+                let ny = (cy as isize + DIRS[chosen_d].1) as usize;
+                curr = ny * cells + nx;
+            }
+
+            // Carve the loop-erased path from start_cell into the maze
+            let mut carve_curr = start_cell;
+            while !in_maze[carve_curr] {
+                let dir = next_dir[carve_curr] as usize;
+                let cx = carve_curr % cells;
+                let cy = carve_curr / cells;
+
+                let wall_x = (cx * 2 + 1) as isize + DIRS[dir].0;
+                let wall_y = (cy * 2 + 1) as isize + DIRS[dir].1;
+                grid[(wall_y as usize) * width + (wall_x as usize)] = 0;
+
+                in_maze[carve_curr] = true;
+                in_maze_count += 1;
+
+                let nx = (cx as isize + DIRS[dir].0) as usize;
+                let ny = (cy as isize + DIRS[dir].1) as usize;
+                carve_curr = ny * cells + nx;
+            }
+
+            if in_maze_count >= total_cells {
+                break;
+            }
+        }
+    }
+
+    /// Recursive Backtracker with straight bias for low difficulties
+    fn generate_backtracker(
+        cells: usize,
+        width: usize,
+        _height: usize,
+        grid: &mut [u8],
+        rng: &mut Rng,
+        diff: u32,
+    ) {
         let mut visited = vec![false; cells * cells];
         let mut stack = Vec::with_capacity(cells * cells);
 
-        let start_idx = start_cell.1 * cells + start_cell.0;
-        visited[start_idx] = true;
-        grid[start_tile.1 * width + start_tile.0] = 0;
-        stack.push((start_cell.0, start_cell.1, 4usize)); // (cx, cy, last_dir)
+        visited[0] = true;
+        grid[1 * width + 1] = 0;
+        stack.push((0usize, 0usize, 4usize));
 
-        // Straightness bias decreases with difficulty:
-        // Difficulty 1: 75% straight preference; Difficulty 1000: 10% straight preference
-        let straight_bias_pct = 75 - (((diff - 1) * 65) / 999) as usize;
-
-        // Directions: 0=North, 1=East, 2=South, 3=West
+        let straight_bias_pct = 75 - (((diff - 1) * 40) / 40) as usize;
         const DIRS: [(isize, isize); 4] = [(0, -1), (1, 0), (0, 1), (-1, 0)];
 
         while let Some(&(cx, cy, last_dir)) = stack.last() {
@@ -83,7 +189,6 @@ impl Maze {
             for (dir_idx, &(dx, dy)) in DIRS.iter().enumerate() {
                 let nx = cx as isize + dx;
                 let ny = cy as isize + dy;
-
                 if nx >= 0 && nx < cells as isize && ny >= 0 && ny < cells as isize {
                     let unx = nx as usize;
                     let uny = ny as usize;
@@ -96,7 +201,6 @@ impl Maze {
             if neighbors.is_empty() {
                 stack.pop();
             } else {
-                // Check if last direction is still available and apply straight bias
                 let chosen_idx = if last_dir < 4 && rng.next_usize(100) < straight_bias_pct {
                     if let Some(pos) = neighbors.iter().position(|&(_, _, d)| d == last_dir) {
                         pos
@@ -108,96 +212,89 @@ impl Maze {
                 };
 
                 let (nx, ny, dir) = neighbors[chosen_idx];
-
-                // Carve wall between (cx, cy) and (nx, ny)
                 let wall_x = (cx * 2 + 1) as isize + DIRS[dir].0;
                 let wall_y = (cy * 2 + 1) as isize + DIRS[dir].1;
                 grid[(wall_y as usize) * width + (wall_x as usize)] = 0;
-
-                // Carve cell
-                let next_tile_x = 2 * nx + 1;
-                let next_tile_y = 2 * ny + 1;
-                grid[next_tile_y * width + next_tile_x] = 0;
+                grid[(2 * ny + 1) * width + (2 * nx + 1)] = 0;
 
                 visited[ny * cells + nx] = true;
                 stack.push((nx, ny, dir));
             }
         }
-
-        // Compute shortest path solution using BFS
-        let solution = Self::solve_bfs(&grid, width, height, start_tile, end_tile);
-
-        Maze {
-            width,
-            height,
-            grid,
-            start: start_tile,
-            end: end_tile,
-            solution,
-        }
     }
 
-    fn solve_bfs(
+    /// Finds the dead-end with maximum shortest-path distance from start using BFS
+    fn find_deepest_exit_and_solution(
         grid: &[u8],
         width: usize,
         height: usize,
         start: (usize, usize),
-        end: (usize, usize),
-    ) -> Vec<(usize, usize)> {
+    ) -> ((usize, usize), Vec<(usize, usize)>) {
         let size = width * height;
+        let mut dist = vec![usize::MAX; size];
         let mut prev = vec![usize::MAX; size];
-        let mut visited = vec![false; size];
         let mut queue = VecDeque::new();
 
         let start_idx = start.1 * width + start.0;
-        let end_idx = end.1 * width + end.0;
-
-        visited[start_idx] = true;
+        dist[start_idx] = 0;
         queue.push_back(start);
 
         const DIRS: [(isize, isize); 4] = [(0, -1), (1, 0), (0, 1), (-1, 0)];
 
+        let mut max_dist = 0;
+        let mut best_tile = start;
+
         while let Some((x, y)) = queue.pop_front() {
             let curr_idx = y * width + x;
-            if curr_idx == end_idx {
-                break;
-            }
+            let d = dist[curr_idx];
 
+            let mut open_neighbors = 0;
             for &(dx, dy) in &DIRS {
                 let nx = x as isize + dx;
                 let ny = y as isize + dy;
-
                 if nx >= 0 && nx < width as isize && ny >= 0 && ny < height as isize {
                     let unx = nx as usize;
                     let uny = ny as usize;
                     let next_idx = uny * width + unx;
 
-                    if grid[next_idx] == 0 && !visited[next_idx] {
-                        visited[next_idx] = true;
-                        prev[next_idx] = curr_idx;
-                        queue.push_back((unx, uny));
+                    if grid[next_idx] == 0 {
+                        open_neighbors += 1;
+                        if dist[next_idx] == usize::MAX {
+                            dist[next_idx] = d + 1;
+                            prev[next_idx] = curr_idx;
+                            queue.push_back((unx, uny));
+                        }
                     }
                 }
             }
-        }
 
-        // Reconstruct path
-        let mut path = Vec::new();
-        if visited[end_idx] {
-            let mut curr = end_idx;
-            while curr != usize::MAX {
-                let px = curr % width;
-                let py = curr / width;
-                path.push((px, py));
-                if curr == start_idx {
-                    break;
-                }
-                curr = prev[curr];
+            // Prefer dead-ends (open_neighbors == 1) with maximum distance
+            let is_dead_end = open_neighbors <= 1 && (x, y) != start;
+            if d > max_dist && is_dead_end {
+                max_dist = d;
+                best_tile = (x, y);
+            } else if d > max_dist && best_tile == start {
+                best_tile = (x, y);
             }
-            path.reverse();
         }
 
-        path
+        // Reconstruct path to best_tile
+        let mut path = Vec::new();
+        let end_idx = best_tile.1 * width + best_tile.0;
+        let mut curr = end_idx;
+
+        while curr != usize::MAX {
+            let px = curr % width;
+            let py = curr / width;
+            path.push((px, py));
+            if curr == start_idx {
+                break;
+            }
+            curr = prev[curr];
+        }
+        path.reverse();
+
+        (best_tile, path)
     }
 }
 
@@ -310,8 +407,8 @@ mod tests {
     fn test_solvability_and_perimeter() {
         for diff in [1, 10, 50, 100, 500, 1000] {
             let m = Maze::generate(diff, 1234567);
-            
-            // Perimeter must be walls (except if openings are added, but here internal tiles are used)
+
+            // Perimeter must be walls
             for x in 0..m.width {
                 assert_eq!(m.grid[0 * m.width + x], 1, "Top wall broken at x={x}");
                 assert_eq!(m.grid[(m.height - 1) * m.width + x], 1, "Bottom wall broken at x={x}");
@@ -350,5 +447,52 @@ mod tests {
         let elapsed = start.elapsed();
         println!("Difficulty 1000 generation elapsed: {elapsed:?}");
         assert!(elapsed.as_millis() < 50, "Maze generation took too long: {elapsed:?}");
+    }
+
+    #[test]
+    fn test_deep_complexity_and_full_reachability() {
+        let m = Maze::generate(1000, 42);
+
+        // 1. Solution length must be deeply winding (at least 300 steps in a 101x101 maze)
+        println!("Difficulty 1000 solution length: {}", m.solution.len());
+        assert!(
+            m.solution.len() >= 300,
+            "Solution path is too short and trivial: {} steps",
+            m.solution.len()
+        );
+
+        // 2. All open cells in the maze MUST be reachable from start (no isolated pockets)
+        let mut visited = vec![false; m.width * m.height];
+        let mut q = std::collections::VecDeque::new();
+        let start_idx = m.start.1 * m.width + m.start.0;
+        visited[start_idx] = true;
+        q.push_back(m.start);
+
+        const DIRS: [(isize, isize); 4] = [(0, -1), (1, 0), (0, 1), (-1, 0)];
+        let mut reachable_count = 0;
+
+        while let Some((x, y)) = q.pop_front() {
+            reachable_count += 1;
+            for &(dx, dy) in &DIRS {
+                let nx = x as isize + dx;
+                let ny = y as isize + dy;
+                if nx >= 0 && nx < m.width as isize && ny >= 0 && ny < m.height as isize {
+                    let unx = nx as usize;
+                    let uny = ny as usize;
+                    let nidx = uny * m.width + unx;
+                    if m.grid[nidx] == 0 && !visited[nidx] {
+                        visited[nidx] = true;
+                        q.push_back((unx, uny));
+                    }
+                }
+            }
+        }
+
+        let total_open_cells = m.grid.iter().filter(|&&cell| cell == 0).count();
+        assert_eq!(
+            reachable_count, total_open_cells,
+            "Unreachable passages detected! Reachable: {}, total open: {}",
+            reachable_count, total_open_cells
+        );
     }
 }

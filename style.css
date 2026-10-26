@@ -40,7 +40,7 @@
   --accent-amber: #f59e0b;
   --accent-crimson: #ef4444;
 
-  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  --font-mono: 'JetBrains Mono', 'Space Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
 
 html, body {
@@ -75,7 +75,7 @@ html, body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  height: 48px;
+  height: 52px;
   padding: 0 16px;
   background: var(--bg-panel);
   border-bottom: 1px solid var(--border-main);
@@ -89,13 +89,21 @@ html, body {
   gap: 12px;
 }
 
-.logo-mark {
-  font-size: 0.85rem;
-  font-weight: 700;
-  color: var(--bg-root);
-  background: var(--fg-primary);
-  padding: 2px 6px;
-  letter-spacing: 0.05em;
+/* Boxed Mini-Maze Logo */
+.logo-box {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  background: #000000;
+  border: 1px solid var(--border-focus);
+  box-shadow: 0 0 8px rgba(255, 255, 255, 0.08);
+  flex-shrink: 0;
+}
+
+.mini-maze-icon {
+  display: block;
 }
 
 .title-group {
@@ -104,46 +112,67 @@ html, body {
 }
 
 .app-title {
-  font-size: 0.95rem;
-  font-weight: 600;
-  letter-spacing: 0.04em;
+  font-size: 1.05rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
   color: var(--fg-primary);
   line-height: 1.1;
+  font-family: 'Space Mono', var(--font-mono);
 }
 
 .app-subtitle {
-  font-size: 0.68rem;
-  letter-spacing: 0.06em;
+  font-size: 0.65rem;
+  letter-spacing: 0.08em;
   color: var(--fg-dim);
   text-transform: lowercase;
 }
 
-.engine-status {
+/* Prominent Hero Timer (Centered) */
+.topbar-center {
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-size: 0.72rem;
-  letter-spacing: 0.08em;
-  color: var(--fg-muted);
+  justify-content: center;
 }
 
-.status-dot {
-  width: 6px;
-  height: 6px;
-  background: var(--fg-dim);
-  display: inline-block;
-  flex-shrink: 0;
-  transition: background-color 0.2s ease, box-shadow 0.2s ease;
+.hero-timer {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  background: var(--bg-input);
+  border: 1px solid var(--border-hover);
+  padding: 4px 14px;
+  box-shadow: inset 0 0 6px rgba(0, 0, 0, 0.5);
+  transition: border-color 0.15s ease, background 0.15s ease;
 }
 
-.status-dot.online {
-  background: var(--accent-emerald-bright);
-  box-shadow: 0 0 6px rgba(74, 222, 128, 0.45);
+.hero-timer.warning {
+  border-color: var(--accent-crimson);
+  background: rgba(239, 68, 68, 0.12);
+  animation: timerPulse 0.8s infinite alternate;
 }
 
-.status-dot.fallback {
-  background: var(--accent-amber);
-  box-shadow: 0 0 6px rgba(245, 158, 11, 0.45);
+.hero-timer.hidden {
+  display: none !important;
+}
+
+.timer-mode-tag {
+  font-size: 0.62rem;
+  font-weight: 700;
+  color: var(--fg-dim);
+  letter-spacing: 0.12em;
+}
+
+.timer-digits {
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: var(--accent-cyan);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+  font-family: 'Space Mono', var(--font-mono);
+}
+
+.hero-timer.warning .timer-digits {
+  color: var(--accent-crimson);
 }
 
 .quick-actions {
@@ -160,7 +189,7 @@ html, body {
   display: flex;
   flex: 1;
   width: 100%;
-  height: calc(100% - 48px);
+  height: calc(100% - 52px);
   overflow: hidden;
   position: relative;
 }
@@ -174,7 +203,7 @@ html, body {
   justify-content: center;
   background: var(--bg-root);
   overflow: hidden;
-  touch-action: none; /* Prevent scroll / zoom gestures */
+  touch-action: none;
 }
 
 .canvas-wrapper {
@@ -191,9 +220,10 @@ html, body {
   image-rendering: pixelated;
   image-rendering: crisp-edges;
   box-shadow: 0 0 0 1px var(--border-main);
-  background-color: #0e0e0e;
+  background-color: #0b0b0b;
   max-width: 100%;
   max-height: 100%;
+  filter: drop-shadow(0 0 12px rgba(0, 0, 0, 0.8));
 }
 
 /* Tactical HUD Overlay inside Viewport */
@@ -204,7 +234,7 @@ html, body {
   display: flex;
   gap: 12px;
   padding: 6px 12px;
-  background: rgba(14, 14, 14, 0.88);
+  background: rgba(14, 14, 14, 0.9);
   border: 1px solid var(--border-subtle);
   backdrop-filter: blur(4px);
   pointer-events: none;
@@ -220,13 +250,13 @@ html, body {
 
 .hud-label {
   color: var(--fg-dim);
-  font-weight: 500;
+  font-weight: 600;
   letter-spacing: 0.08em;
 }
 
 .hud-val {
   color: var(--fg-primary);
-  font-weight: 600;
+  font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
 
@@ -251,22 +281,22 @@ html, body {
   align-items: center;
   justify-content: center;
   font-family: inherit;
-  font-size: 1rem;
+  font-size: 1.1rem;
   transition: background 0.1s ease, color 0.1s ease;
   outline: none;
 }
 
 .edge-top {
   top: 0;
-  left: 15%;
-  right: 15%;
+  left: 18%;
+  right: 18%;
   height: 25%;
 }
 
 .edge-bottom {
   bottom: 0;
-  left: 15%;
-  right: 15%;
+  left: 18%;
+  right: 18%;
   height: 25%;
 }
 
@@ -285,22 +315,22 @@ html, body {
 }
 
 .edge-indicator {
-  opacity: 0.25;
-  transition: opacity 0.15s ease, transform 0.15s ease;
+  opacity: 0.22;
+  transition: opacity 0.12s ease, transform 0.12s ease;
 }
 
 .edge-btn:hover .edge-indicator {
-  opacity: 0.6;
+  opacity: 0.55;
 }
 
 .edge-btn:active {
-  background: rgba(56, 189, 248, 0.08);
+  background: rgba(56, 189, 248, 0.09);
 }
 
 .edge-btn:active .edge-indicator {
   opacity: 1;
   color: var(--accent-cyan);
-  transform: scale(1.2);
+  transform: scale(1.25);
 }
 
 /* ==========================================================================
@@ -308,7 +338,7 @@ html, body {
    ========================================================================== */
 
 .control-deck {
-  width: 320px;
+  width: 330px;
   background: var(--bg-panel);
   border-left: 1px solid var(--border-main);
   display: flex;
@@ -340,17 +370,18 @@ html, body {
 
 .section-title {
   font-size: 0.72rem;
-  font-weight: 600;
+  font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.12em;
   color: var(--fg-dim);
 }
 
 .diff-readout {
-  font-size: 0.85rem;
-  font-weight: 700;
+  font-size: 0.88rem;
+  font-weight: 800;
   color: var(--accent-cyan);
   font-variant-numeric: tabular-nums;
+  font-family: 'Space Mono', var(--font-mono);
 }
 
 /* Difficulty Sliders */
@@ -418,6 +449,28 @@ input[type="number"]:focus {
   text-align: center;
 }
 
+/* Timer Mode Selector */
+.timer-mode-selector {
+  display: flex;
+  gap: 4px;
+}
+
+.btn-mode {
+  flex: 1;
+  padding: 6px 4px;
+  font-size: 0.68rem;
+  font-weight: 600;
+  background: #141414;
+  border: 1px solid var(--border-subtle);
+  color: var(--fg-muted);
+}
+
+.btn-mode.active {
+  background: var(--bg-input);
+  border-color: var(--accent-cyan);
+  color: var(--accent-cyan);
+}
+
 /* Action Grid */
 .action-grid {
   display: flex;
@@ -436,9 +489,10 @@ input[type="number"]:focus {
   border: 1px solid var(--border-hover);
   font-size: 0.78rem;
   font-family: inherit;
+  font-weight: 600;
   cursor: pointer;
   letter-spacing: 0.04em;
-  transition: all 0.15s ease;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
   outline: none;
 }
 
@@ -496,8 +550,8 @@ input[type="number"]:focus {
 .win-banner {
   position: absolute;
   inset: 0;
-  background: rgba(11, 11, 11, 0.88);
-  backdrop-filter: blur(6px);
+  background: rgba(11, 11, 11, 0.78);
+  backdrop-filter: blur(4px);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -514,22 +568,33 @@ input[type="number"]:focus {
   display: flex;
   flex-direction: column;
   gap: 16px;
-  box-shadow: 0 0 20px rgba(16, 185, 129, 0.2);
-}
-
-.win-tag {
-  font-size: 0.7rem;
-  letter-spacing: 0.15em;
-  color: var(--accent-emerald-bright);
-  font-weight: 600;
+  box-shadow: 0 0 24px rgba(16, 185, 129, 0.25);
 }
 
 .win-title {
   font-size: 1.6rem;
-  font-weight: 700;
+  font-weight: 800;
   color: #ffffff;
   letter-spacing: -0.02em;
   line-height: 1;
+  font-family: 'Space Mono', var(--font-mono);
+}
+
+.optimal-hint {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  color: var(--accent-emerald-bright);
+  text-transform: uppercase;
+}
+
+.expired-card {
+  border-color: var(--accent-crimson);
+  box-shadow: 0 0 24px rgba(239, 68, 68, 0.25);
+}
+
+.expired-title {
+  color: var(--accent-crimson);
 }
 
 .win-stats {
@@ -551,11 +616,12 @@ input[type="number"]:focus {
   font-size: 0.68rem;
   color: var(--fg-dim);
   letter-spacing: 0.08em;
+  font-weight: 600;
 }
 
 .stat-val {
-  font-size: 1.1rem;
-  font-weight: 600;
+  font-size: 1.15rem;
+  font-weight: 700;
   color: var(--fg-primary);
   font-variant-numeric: tabular-nums;
 }
@@ -573,7 +639,7 @@ input[type="number"]:focus {
 .modal-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.82);
+  background: rgba(0, 0, 0, 0.85);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -601,7 +667,7 @@ input[type="number"]:focus {
 
 .modal-title {
   font-size: 0.82rem;
-  font-weight: 600;
+  font-weight: 700;
   letter-spacing: 0.08em;
   color: var(--fg-primary);
 }
@@ -618,7 +684,7 @@ input[type="number"]:focus {
 
 .form-label {
   font-size: 0.7rem;
-  font-weight: 600;
+  font-weight: 700;
   letter-spacing: 0.1em;
   color: var(--fg-dim);
   text-transform: uppercase;
@@ -664,7 +730,6 @@ input[type="number"]:focus {
    Responsive Breakpoints & Fullscreen Modes
    ========================================================================== */
 
-/* Fullscreen mode on viewport */
 .app-root.fullscreen .topbar {
   display: none;
 }
@@ -680,6 +745,24 @@ input[type="number"]:focus {
 
 /* Mobile Screens (Under 768px) */
 @media (max-width: 768px) {
+  .topbar {
+    padding: 0 10px;
+    height: 48px;
+  }
+
+  .app-subtitle {
+    display: none;
+  }
+
+  .hero-timer {
+    padding: 2px 8px;
+    gap: 6px;
+  }
+
+  .timer-digits {
+    font-size: 1rem;
+  }
+
   .workspace {
     flex-direction: column;
   }
@@ -687,7 +770,7 @@ input[type="number"]:focus {
   .control-deck {
     width: 100%;
     height: auto;
-    max-height: 40vh;
+    max-height: 42vh;
     border-left: none;
     border-top: 1px solid var(--border-main);
     padding: 12px;
@@ -695,7 +778,7 @@ input[type="number"]:focus {
   }
 
   .instructions-section {
-    display: none; /* Saved vertical space for small screens */
+    display: none;
   }
 
   .action-grid {
@@ -715,5 +798,10 @@ input[type="number"]:focus {
 
 @keyframes fadeIn {
   from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes timerPulse {
+  from { opacity: 0.7; }
   to { opacity: 1; }
 }

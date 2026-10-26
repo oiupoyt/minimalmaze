@@ -130,3 +130,66 @@ test("calcEfficiency formula accuracy", () => {
   assert.equal(calcEfficiency(0, 10), 100);
 });
 
+test("Backtracking trail pruning removes trail when stepping backward", () => {
+  // 5x5 maze with a dead end at (2,1)->(3,1)
+  const width = 5;
+  const height = 5;
+  const grid = new Uint8Array([
+    1, 1, 1, 1, 1,
+    1, 0, 0, 0, 1,
+    1, 1, 1, 0, 1,
+    1, 1, 1, 0, 1,
+    1, 1, 1, 1, 1,
+  ]);
+  const game = new GameEngine(width, height, grid, [1, 1], [3, 3]);
+
+  // Initial trail: [[1, 1]]
+  assert.deepEqual(game.trail, [[1, 1]]);
+
+  // Move RIGHT to (2, 1) -> trail: [[1,1], [2,1]]
+  game.move("RIGHT");
+  assert.deepEqual(game.trail, [[1, 1], [2, 1]]);
+
+  // Move RIGHT to (3, 1) -> trail: [[1,1], [2,1], [3,1]]
+  game.move("RIGHT");
+  assert.deepEqual(game.trail, [[1, 1], [2, 1], [3, 1]]);
+
+  // Backtrack LEFT to (2, 1) -> trail must remove (3,1), becoming [[1,1], [2,1]]!
+  const back1 = game.move("LEFT");
+  assert.equal(back1.moved, true);
+  assert.deepEqual(game.playerPos, [2, 1]);
+  assert.deepEqual(game.trail, [[1, 1], [2, 1]], "Trail should prune previous tile on backtrack");
+
+  // Backtrack LEFT to (1, 1) -> trail must remove (2,1), becoming [[1,1]]!
+  const back2 = game.move("LEFT");
+  assert.equal(back2.moved, true);
+  assert.deepEqual(game.playerPos, [1, 1]);
+  assert.deepEqual(game.trail, [[1, 1]], "Trail should prune back to start tile on backtrack");
+});
+
+test("Timer modes support countdown limits and expiration", () => {
+  const width = 5;
+  const height = 5;
+  const grid = new Uint8Array(25).fill(0);
+  const game = new GameEngine(width, height, grid, [1, 1], [3, 3]);
+
+  // Set countdown mode with 30s limit
+  game.setTimerMode("countdown", 30000);
+  assert.equal(game.timerMode, "countdown");
+  assert.equal(game.timeLimitMs, 30000);
+
+  // Before move
+  assert.equal(game.getRemainingTimeMs(), 30000);
+  assert.equal(game.isTimeExpired(), false);
+
+  // Simulate start
+  game.startTime = Date.now() - 35000; // 35s ago
+  assert.equal(game.isTimeExpired(), true);
+  assert.equal(game.getRemainingTimeMs(), 0);
+
+  // Moving when expired should fail
+  const moveRes = game.move("RIGHT");
+  assert.equal(moveRes.moved, false, "Move should be rejected when countdown expires");
+});
+
+

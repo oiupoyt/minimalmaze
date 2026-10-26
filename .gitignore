@@ -1,0 +1,10 @@
+# Rust Build Artifacts
+engine/target/
+**/*.rs.bk
+Cargo.lock
+
+# Operating System Files
+.DS_Store
+Thumbs.db
+*.swp
+*~

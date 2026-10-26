@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>MINIMALMAZE // 2D Top-Down Labyrinth Engine</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div id="app" class="app-root">
+    <!-- Top Bar Navigation & Status -->
+    <header class="topbar">
+      <div class="brand">
+        <div class="logo-mark">MM</div>
+        <div class="title-group">
+          <h1 class="app-title">MINIMALMAZE</h1>
+          <span class="app-subtitle">2d top-down rust wasm engine</span>
+        </div>
+      </div>
+
+      <div class="engine-status">
+        <span class="status-dot online" id="statusDot"></span>
+        <span class="status-text" id="statusText">WASM CORE</span>
+      </div>
+
+      <div class="quick-actions">
+        <button id="btnFullscreen" class="btn btn-sm" title="Toggle Fullscreen (F)">[ FULLSCREEN ]</button>
+      </div>
+    </header>
+
+    <!-- Main Workspace Area -->
+    <main class="workspace">
+      <!-- Maze Canvas Viewport Container -->
+      <section class="viewport-container" id="viewportContainer">
+        <div class="canvas-wrapper" id="canvasWrapper">
+          <canvas id="mazeCanvas"></canvas>
+          <div id="winBanner" class="win-banner hidden">
+            <div class="win-card">
+              <div class="win-tag">STATUS: OBJECTIVE COMPLETE</div>
+              <h2 class="win-title">MAZE SOLVED</h2>
+              <div class="win-stats">
+                <div class="stat-item">
+                  <span class="stat-label">TIME</span>
+                  <span class="stat-val" id="winTime">00:00.0</span>
+                </div>
+                <div class="stat-item">
+                  <span class="stat-label">STEPS</span>
+                  <span class="stat-val" id="winSteps">0</span>
+                </div>
+                <div class="stat-item">
+                  <span class="stat-label">OPTIMAL</span>
+                  <span class="stat-val" id="winOptimal">0</span>
+                </div>
+                <div class="stat-item">
+                  <span class="stat-label">EFFICIENCY</span>
+                  <span class="stat-val" id="winEff">100%</span>
+                </div>
+              </div>
+              <div class="win-actions">
+                <button id="btnNextLevel" class="btn btn-primary">[ NEXT DIFFICULTY ]</button>
+                <button id="btnPlayAgain" class="btn">[ PLAY AGAIN ]</button>
+                <button id="btnWinDownload" class="btn">[ EXPORT PNG ]</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Mobile 4-Quadrant / Edge Tap Control Overlays -->
+        <div class="edge-controls" id="edgeControls">
+          <button class="edge-btn edge-top" id="tapUp" aria-label="Move Up">
+            <span class="edge-indicator">▲</span>
+          </button>
+          <button class="edge-btn edge-bottom" id="tapDown" aria-label="Move Down">
+            <span class="edge-indicator">▼</span>
+          </button>
+          <button class="edge-btn edge-left" id="tapLeft" aria-label="Move Left">
+            <span class="edge-indicator">◀</span>
+          </button>
+          <button class="edge-btn edge-right" id="tapRight" aria-label="Move Right">
+            <span class="edge-indicator">▶</span>
+          </button>
+        </div>
+
+        <!-- In-Canvas Tactical HUD -->
+        <div class="tactical-hud">
+          <div class="hud-item"><span class="hud-label">DIFF</span> <span class="hud-val" id="hudDiff">50</span></div>
+          <div class="hud-item"><span class="hud-label">GRID</span> <span class="hud-val" id="hudGrid">15x15</span></div>
+          <div class="hud-item"><span class="hud-label">STEPS</span> <span class="hud-val" id="hudSteps">0</span></div>
+          <div class="hud-item"><span class="hud-label">TIME</span> <span class="hud-val" id="hudTime">00:00.0</span></div>
+        </div>
+      </section>
+
+      <!-- Bottom / Side Tactical Control Deck -->
+      <aside class="control-deck">
+        <!-- Difficulty Panel -->
+        <div class="deck-section">
+          <div class="section-header">
+            <span class="section-title">DIFFICULTY SCALING (1-1000)</span>
+            <span class="diff-readout" id="diffValueDisplay">050</span>
+          </div>
+
+          <div class="slider-row">
+            <input type="range" id="diffSlider" min="1" max="1000" value="50" step="1">
+            <input type="number" id="diffInput" min="1" max="1000" value="50">
+          </div>
+
+          <div class="preset-group">
+            <button class="btn btn-preset" data-diff="1">001 TRIVIAL</button>
+            <button class="btn btn-preset" data-diff="50">050 NOVICE</button>
+            <button class="btn btn-preset" data-diff="200">200 ADEPT</button>
+            <button class="btn btn-preset" data-diff="500">500 MASTER</button>
+            <button class="btn btn-preset" data-diff="1000">1000 LABYRINTH</button>
+          </div>
+        </div>
+
+        <!-- Action Commands -->
+        <div class="deck-section">
+          <div class="section-header">
+            <span class="section-title">COMMANDS</span>
+          </div>
+          <div class="action-grid">
+            <button id="btnRegenerate" class="btn btn-primary">[ REGENERATE (R) ]</button>
+            <button id="btnResetPlayer" class="btn">[ RESET TO START ]</button>
+            <button id="btnToggleSolution" class="btn">[ SHOW SOLUTION ]</button>
+            <button id="btnDownloadPng" class="btn">[ DOWNLOAD PNG ]</button>
+          </div>
+        </div>
+
+        <!-- Mobile / Desktop Instruction Hint -->
+        <div class="deck-section instructions-section">
+          <div class="section-header">
+            <span class="section-title">CONTROLS</span>
+          </div>
+          <div class="instructions-text">
+            <span><b>MOBILE:</b> TAP SCREEN EDGES (▲ ▼ ◀ ▶) OR SWIPE TO MOVE</span>
+            <span><b>DESKTOP:</b> WASD / ARROW KEYS OR CLICK TO STEP</span>
+            <span><b>TRAIL:</b> CYAN TRACE MARKS PATH AUTOMATICALLY</span>
+          </div>
+        </div>
+      </aside>
+    </main>
+
+    <!-- Download PNG Modal -->
+    <div id="exportModal" class="modal-backdrop hidden">
+      <div class="modal-dialog">
+        <div class="modal-header">
+          <span class="modal-title">EXPORT MAZE IMAGE</span>
+          <button id="btnExportClose" class="btn btn-sm">[ ESC ]</button>
+        </div>
+        <div class="modal-body">
+          <div class="export-options">
+            <label class="form-label">PALETTE / STYLE</label>
+            <div class="radio-row">
+              <label class="radio-label">
+                <input type="radio" name="exportStyle" value="print" checked>
+                <span>PRINTABLE (BLACK ON WHITE)</span>
+              </label>
+              <label class="radio-label">
+                <input type="radio" name="exportStyle" value="obsidian">
+                <span>DARK OBSIDIAN (THEME)</span>
+              </label>
+            </div>
+
+            <label class="form-label">RESOLUTION</label>
+            <div class="radio-row">
+              <label class="radio-label">
+                <input type="radio" name="exportScale" value="1024" checked>
+                <span>STANDARD (1024 PX)</span>
+              </label>
+              <label class="radio-label">
+                <input type="radio" name="exportScale" value="2048">
+                <span>PRINT HI-RES (2048 PX)</span>
+              </label>
+            </div>
+
+            <label class="form-label">PATH OVERLAYS</label>
+            <div class="checkbox-row">
+              <label class="checkbox-label">
+                <input type="checkbox" id="chkIncludeSolution">
+                <span>INCLUDE SHORTEST PATH SOLUTION</span>
+              </label>
+              <label class="checkbox-label">
+                <input type="checkbox" id="chkIncludePlayerTrail">
+                <span>INCLUDE CURRENT PLAYER TRAIL</span>
+              </label>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button id="btnConfirmDownload" class="btn btn-primary">[ DOWNLOAD PNG ]</button>
+          <button id="btnCancelDownload" class="btn">[ CANCEL ]</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Fallback Embedded WebAssembly Script -->
+  <script src="wasm_embedded.js"></script>
+  <!-- Core Logic Engine -->
+  <script src="core_logic.js"></script>
+  <!-- Application Logic -->
+  <script src="app.js"></script>
+</body>
+</html>

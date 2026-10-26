@@ -1,10 +1,9 @@
 # MINIMALMAZE
 
-A fast, low-latency, 2D top-down maze generation and solving web application powered by a Rust WebAssembly core engine following the **KAT Square Minimalist** design standard.
+A fast, low-latency, 2D top-down maze generation and solving web application. cool maze game basically.
 
 ![License](https://img.shields.io/badge/license-MIT-blue)
 ![Rust](https://img.shields.io/badge/engine-Rust%20Wasm-orange)
-![Design](https://img.shields.io/badge/theme-KAT%20Square%20Minimalist-black)
 
 ---
 

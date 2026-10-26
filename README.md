@@ -5,21 +5,25 @@ A fast, low-latency, 2D top-down maze generation and solving web application. co
 ![License](https://img.shields.io/badge/license-MIT-blue)
 ![Rust](https://img.shields.io/badge/engine-Rust%20Wasm-orange)
 
+<p align="center">
+  <img src="preview.png" alt="MINIMALMAZE Preview" width="560">
+</p>
+
 ---
 
 ## Features
 
-- **Rust WebAssembly Core (`wasm32-unknown-unknown`)**: Algorithmic Recursive Backtracker maze generation with BFS pathfinder compiled directly to WebAssembly (< 31 KB binary, sub-millisecond generation times).
-- **Difficulty Scaling (1–1000)**: Smooth two-tier difficulty scaling mapping from simple 5×5 corridor mazes up to dense 101×101 labyrinths, with algorithmic corridor straightness bias adjusting dynamically.
-- **Player Trail Tracking**: Electric cyan avatar (`#38bdf8`) with automated path trail highlighting visited corridors and backtrack detection.
+- **Rust WebAssembly Core (`wasm32-unknown-unknown`)**: Wilson's algorithm (Uniform Spanning Tree) with loop-erased random walks and BFS pathfinder compiled directly to WebAssembly (< 32 KB binary, sub-millisecond generation).
+- **Hard Algorithmic Difficulty (1–1000)**: Dense labyrinth structures with zero directional bias and deepest dead-end exit placement, scaling from 5×5 up to 101×101 grids.
+- **Intelligent Trail Tracking**: Electric cyan avatar (`#38bdf8`) with automated breadcrumb trail that automatically unwinds and prunes when backtracking out of dead ends.
+- **Subconscious Sub-Pixel Hairline Grid**: Subtle 1px grid overlay for instant spatial navigation without visual noise.
+- **Dedicated Chronometer**: Centered hero timer with Stopwatch, Countdown challenge, and Hidden zen modes.
+- **Hardware-Accelerated Blit Pipeline**: Pre-cached offscreen static canvas drops per-move redraw latency to < 0.05ms.
 - **Cross-Platform Low Latency Controls**:
   - **Mobile**: Fullscreen edge-tap quadrants (`▲`, `▼`, `◀`, `▶`), touch swipe gestures, and viewport auto-fit (`100dvh`).
-  - **Desktop**: `WASD` & Arrow keys, direct cell click-to-step, quick hotkeys (`R` to regenerate, `F` for fullscreen).
-- **High-Resolution PNG Export**: Downloadable crisp maze image exports (1024px or 2048px print resolution) supporting:
-  - Printable Black & White mode (for paper puzzle printing).
-  - Dark Obsidian theme mode.
-  - Optional shortest-path solution overlay and player trail overlay.
-- **KAT Square Minimalist Aesthetics**: Razor-sharp `border-radius: 0 !important;`, obsidian dark palette (`#0b0b0b`), JetBrains Mono monospace typography, hairline borders, and tactical tabular metrics HUD.
+  - **Desktop**: `WASD` & Arrow keys, direct cell click-to-step, quick hotkeys (`R` to regenerate, `F` for fullscreen, `T` for timer mode).
+- **High-Resolution PNG Export**: Downloadable crisp maze image exports (1024px or 2048px print resolution) supporting printable black & white mode and dark obsidian mode.
+- **KAT Square Minimalist Aesthetics**: Razor-sharp `border-radius: 0 !important;`, obsidian dark palette (`#0b0b0b`), bold JetBrains Mono / Space Mono typography, and monochrome boxed mini-maze branding.
 - **Zero Single Point of Failure**: Dual-layered engine with native Wasm streaming, embedded base64 fallback (offline `file://` compatibility), and pure JavaScript generator fallback.
 
 ---

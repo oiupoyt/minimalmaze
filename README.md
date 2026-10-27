@@ -2,6 +2,8 @@
 
 A fast, low-latency, 2D top-down maze generation and solving web application. cool maze game basically.
 
+↗ [maze.oiupoyt.space](https://maze.oiupoyt.space)
+
 ![License](https://img.shields.io/badge/license-MIT-blue)
 ![Rust](https://img.shields.io/badge/engine-Rust%20Wasm-orange)
 

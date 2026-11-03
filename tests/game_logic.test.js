@@ -192,4 +192,32 @@ test("Timer modes support countdown limits and expiration", () => {
   assert.equal(moveRes.moved, false, "Move should be rejected when countdown expires");
 });
 
+test("Mobile difficulty scaling creates compact, playable grid for 500-1000 labys", () => {
+  // Desktop defaults (isMobile = false)
+  const d500Desk = calcGridDimensions(500, false);
+  const d1000Desk = calcGridDimensions(1000, false);
+  assert.ok(d500Desk.width > 50, "Desktop diff 500 should be wide");
+  assert.equal(d1000Desk.width, 101, "Desktop diff 1000 should be 101x101");
+
+  // Mobile scaling (isMobile = true)
+  const d1Mobile = calcGridDimensions(1, true);
+  const d500Mobile = calcGridDimensions(500, true);
+  const d1000Mobile = calcGridDimensions(1000, true);
+
+  assert.equal(d1Mobile.width, 5, "Mobile diff 1 should still be 5x5");
+  assert.ok(
+    d500Mobile.width <= 35,
+    `Mobile diff 500 width (${d500Mobile.width}) should be compact (<= 35) for phone screens`
+  );
+  assert.ok(
+    d1000Mobile.width <= 51,
+    `Mobile diff 1000 width (${d1000Mobile.width}) should be capped (<= 51) for clear phone visibility`
+  );
+  assert.ok(
+    d1000Mobile.width >= 41,
+    `Mobile diff 1000 width (${d1000Mobile.width}) should provide rich labyrinth depth (>= 41)`
+  );
+});
+
+
 

@@ -45,10 +45,15 @@ pub struct Maze {
 
 impl Maze {
     pub fn generate(difficulty: u32, seed: u64) -> Self {
-        let diff = difficulty.clamp(1, 1000);
+        Self::generate_scaled(difficulty, seed, 50)
+    }
 
-        // Scale cells: difficulty 1 -> 2x2 cells (5x5 grid); difficulty 1000 -> 50x50 cells (101x101 grid)
-        let cells = 2 + (((diff as u64 - 1) * 48 + 499) / 999) as usize;
+    pub fn generate_scaled(difficulty: u32, seed: u64, max_cells: u32) -> Self {
+        let diff = difficulty.clamp(1, 1000);
+        let max_c = max_cells.clamp(2, 100) as usize;
+
+        // Scale cells: difficulty 1 -> 2x2 cells (5x5 grid); difficulty 1000 -> max_c x max_c cells
+        let cells = 2 + (((diff as u64 - 1) * (max_c as u64 - 2) + 499) / 999) as usize;
         let width = 2 * cells + 1;
         let height = 2 * cells + 1;
 
@@ -311,7 +316,12 @@ static STATE: Mutex<GlobalState> = Mutex::new(GlobalState {
 
 #[no_mangle]
 pub extern "C" fn generate_maze(difficulty: u32, seed: u64) -> u32 {
-    let maze = Maze::generate(difficulty, seed);
+    generate_maze_scaled(difficulty, seed, 50)
+}
+
+#[no_mangle]
+pub extern "C" fn generate_maze_scaled(difficulty: u32, seed: u64, max_cells: u32) -> u32 {
+    let maze = Maze::generate_scaled(difficulty, seed, max_cells);
     let mut state = STATE.lock().unwrap();
 
     let mut packed = Vec::with_capacity(maze.solution.len());

@@ -33,7 +33,35 @@
   const btnResetPlayer = document.getElementById("btnResetPlayer");
   const btnToggleSolution = document.getElementById("btnToggleSolution");
   const btnFullscreen = document.getElementById("btnFullscreen");
+  const btnFocus = document.getElementById("btnFocus");
   const btnDownloadPng = document.getElementById("btnDownloadPng");
+
+  // Grid Density Selectors
+  const btnDensityAuto = document.getElementById("btnDensityAuto");
+  const btnDensityUncapped = document.getElementById("btnDensityUncapped");
+  const btnDrawerGridAuto = document.getElementById("btnDrawerGridAuto");
+  const btnDrawerGridUncapped = document.getElementById("btnDrawerGridUncapped");
+
+  // Focus Mode Elements
+  const rootApp = document.getElementById("app");
+  const focusHud = document.getElementById("focusHud");
+  const btnExitFocus = document.getElementById("btnExitFocus");
+  const focusTime = document.getElementById("focusTime");
+  const focusDiffBadge = document.getElementById("focusDiffBadge");
+  const btnFocusRegen = document.getElementById("btnFocusRegen");
+  const btnFocusMenu = document.getElementById("btnFocusMenu");
+
+  // Mobile Drawer in Focus Mode
+  const mobileDrawer = document.getElementById("mobileDrawer");
+  const btnCloseDrawer = document.getElementById("btnCloseDrawer");
+  const drawerDiffDisplay = document.getElementById("drawerDiffDisplay");
+  const drawerDiffSlider = document.getElementById("drawerDiffSlider");
+  const drawerDiffInput = document.getElementById("drawerDiffInput");
+  const btnDrawerRegen = document.getElementById("btnDrawerRegen");
+  const btnDrawerReset = document.getElementById("btnDrawerReset");
+  const btnDrawerSol = document.getElementById("btnDrawerSol");
+  const btnDrawerExport = document.getElementById("btnDrawerExport");
+  const btnDrawerExitFocus = document.getElementById("btnDrawerExitFocus");
 
   // Timer Mode Controls
   const btnModeStopwatch = document.getElementById("btnModeStopwatch");
@@ -83,6 +111,14 @@
   let showSolution = false;
   let animFrameId = null;
   let lastTouchPos = null;
+  let isFocusMode = false;
+  let gridScaleMode = "auto"; // "auto" (mobile compact) | "uncapped" (101x101 max)
+
+  function getIsMobile() {
+    if (gridScaleMode === "uncapped") return false;
+    if (gridScaleMode === "compact") return true;
+    return window.innerWidth <= 768;
+  }
 
   // Timer State: "stopwatch" | "countdown" | "hidden"
   let timerMode = "stopwatch";
@@ -186,8 +222,9 @@
     currentDifficulty = Math.max(1, Math.min(1000, Math.floor(difficulty || currentDifficulty)));
     updateDifficultyUI();
 
+    const isMobile = getIsMobile();
     const seed = BigInt(Math.floor(Math.random() * 1000000000) + 1);
-    currentMaze = wasmEngine.generate(currentDifficulty, seed);
+    currentMaze = wasmEngine.generate(currentDifficulty, seed, isMobile);
 
     game = new GameEngine(
       currentMaze.width,
@@ -204,12 +241,13 @@
 
     showSolution = false;
     btnToggleSolution.textContent = "[ SHOW SOLUTION ]";
+    if (btnDrawerSol) btnDrawerSol.textContent = "[ SHOW SOLUTION ]";
     winBanner.classList.add("hidden");
     expiredBanner.classList.add("hidden");
     heroTimerContainer.classList.remove("warning");
 
     hudDiff.textContent = currentDifficulty;
-    hudGrid.textContent = `${currentMaze.width}x${currentMaze.height}`;
+    hudGrid.textContent = `${currentMaze.width}x${currentMaze.height}${isMobile ? " (MOBILE)" : ""}`;
     hudSteps.textContent = "0";
     updateTimerDisplay();
 
@@ -220,6 +258,11 @@
     diffSlider.value = currentDifficulty;
     diffInput.value = currentDifficulty;
     diffValueDisplay.textContent = String(currentDifficulty).padStart(3, "0");
+
+    if (drawerDiffSlider) drawerDiffSlider.value = currentDifficulty;
+    if (drawerDiffInput) drawerDiffInput.value = currentDifficulty;
+    if (drawerDiffDisplay) drawerDiffDisplay.textContent = String(currentDifficulty).padStart(3, "0");
+    if (focusDiffBadge) focusDiffBadge.textContent = "DIFF " + String(currentDifficulty).padStart(3, "0");
   }
 
   // Handle Player Movement
@@ -271,10 +314,12 @@
 
     const rect = viewportContainer.getBoundingClientRect();
     const dpr = window.devicePixelRatio || 1;
+    const isMobile = window.innerWidth <= 768;
 
-    const padding = 24;
-    const availW = Math.max(100, rect.width - padding);
-    const availH = Math.max(100, rect.height - padding);
+    // Use tighter padding in focus mode on mobile for absolute edge-to-edge maze coverage
+    const padding = isFocusMode ? (isMobile ? 4 : 8) : (isMobile ? 8 : 24);
+    const availW = Math.max(80, rect.width - padding);
+    const availH = Math.max(80, rect.height - padding);
 
     const size = Math.min(availW, availH);
     const cellSize = Math.floor(size / currentMaze.width);
@@ -444,7 +489,9 @@
 
     if (timerMode === "countdown") {
       const remainingMs = game.getRemainingTimeMs();
-      heroTime.textContent = formatTime(remainingMs);
+      const txt = formatTime(remainingMs);
+      heroTime.textContent = txt;
+      if (focusTime) focusTime.textContent = txt;
       if (game.startTime && remainingMs <= 10000 && remainingMs > 0) {
         heroTimerContainer.classList.add("warning");
       } else {
@@ -452,8 +499,12 @@
       }
     } else if (timerMode === "stopwatch") {
       const elapsedMs = game.getElapsedTimeMs();
-      heroTime.textContent = formatTime(elapsedMs);
+      const txt = formatTime(elapsedMs);
+      heroTime.textContent = txt;
+      if (focusTime) focusTime.textContent = txt;
       heroTimerContainer.classList.remove("warning");
+    } else {
+      if (focusTime) focusTime.textContent = "ZEN";
     }
   }
 
@@ -515,7 +566,7 @@
       case "f":
       case "F":
         e.preventDefault();
-        toggleFullscreen();
+        toggleFocusMode();
         break;
       case "t":
       case "T":
@@ -524,19 +575,48 @@
         break;
       case "Escape":
         exportModal.classList.add("hidden");
+        mobileDrawer.classList.add("hidden");
         break;
     }
   });
 
-  // Mobile / Touch Controls
+  // Mobile / Touch Controls with Hold-to-Run
+  let holdInterval = null;
+  function startHold(direction) {
+    handleMove(direction);
+    clearInterval(holdInterval);
+    holdInterval = setInterval(() => {
+      handleMove(direction);
+    }, 115);
+  }
+  function stopHold() {
+    if (holdInterval) {
+      clearInterval(holdInterval);
+      holdInterval = null;
+    }
+  }
+
   function bindTouchButton(btn, direction) {
     if (!btn) return;
-    const trigger = (e) => {
+    btn.addEventListener(
+      "touchstart",
+      (e) => {
+        e.preventDefault();
+        startHold(direction);
+      },
+      { passive: false }
+    );
+    btn.addEventListener("touchend", (e) => {
       e.preventDefault();
-      handleMove(direction);
-    };
-    btn.addEventListener("touchstart", trigger, { passive: false });
-    btn.addEventListener("mousedown", trigger);
+      stopHold();
+    });
+    btn.addEventListener("touchcancel", stopHold);
+    btn.addEventListener("mousedown", (e) => {
+      e.preventDefault();
+      startHold(direction);
+    });
+    btn.addEventListener("mouseup", stopHold);
+    btn.addEventListener("mouseleave", stopHold);
   }
 
   bindTouchButton(tapUp, "UP");
@@ -579,7 +659,7 @@
     { passive: true }
   );
 
-  // Direct Click on Maze to Step
+  // Direct Click / Tap on Maze to Step
   canvas.addEventListener("click", (e) => {
     if (!currentMaze || !game || game.isWon || game.isTimeExpired()) return;
     const rect = canvas.getBoundingClientRect();
@@ -596,6 +676,13 @@
       else if (dx === -1) handleMove("LEFT");
       else if (dy === 1) handleMove("DOWN");
       else if (dy === -1) handleMove("UP");
+    } else {
+      // Direct relative tap navigation: move in dominant direction relative to avatar
+      if (Math.abs(dx) > Math.abs(dy)) {
+        handleMove(dx > 0 ? "RIGHT" : "LEFT");
+      } else if (Math.abs(dy) > 0) {
+        handleMove(dy > 0 ? "DOWN" : "UP");
+      }
     }
   });
 
@@ -616,6 +703,7 @@
   btnToggleSolution.addEventListener("click", () => {
     showSolution = !showSolution;
     btnToggleSolution.textContent = showSolution ? "[ HIDE SOLUTION ]" : "[ SHOW SOLUTION ]";
+    if (btnDrawerSol) btnDrawerSol.textContent = showSolution ? "[ HIDE SOLUTION ]" : "[ SHOW SOLUTION ]";
     renderDynamic();
   });
 
@@ -674,46 +762,122 @@
     createMaze(currentDifficulty);
   });
 
+  // Mobile Drawer Difficulty Syncing
+  if (drawerDiffSlider) {
+    drawerDiffSlider.addEventListener("input", (e) => {
+      currentDifficulty = parseInt(e.target.value, 10);
+      updateDifficultyUI();
+    });
+    drawerDiffSlider.addEventListener("change", () => createMaze(currentDifficulty));
+  }
+  if (drawerDiffInput) {
+    drawerDiffInput.addEventListener("change", (e) => {
+      currentDifficulty = Math.max(1, Math.min(1000, parseInt(e.target.value, 10) || 50));
+      updateDifficultyUI();
+      createMaze(currentDifficulty);
+    });
+  }
+
   // Difficulty presets
   presetButtons.forEach((btn) => {
     btn.addEventListener("click", () => {
       const diff = parseInt(btn.dataset.diff, 10);
       createMaze(diff);
+      if (mobileDrawer) mobileDrawer.classList.add("hidden");
     });
   });
 
-  // Fullscreen Toggle
-  function toggleFullscreen() {
-    const root = document.getElementById("app");
-    if (!document.fullscreenElement) {
-      if (root.requestFullscreen) {
-        root.requestFullscreen().catch(() => {
-          root.classList.toggle("fullscreen");
-          rebuildStaticCacheAndRender();
-        });
-      } else {
-        root.classList.toggle("fullscreen");
-        rebuildStaticCacheAndRender();
-      }
+  // Grid Density Switcher
+  function setGridScaleMode(mode) {
+    gridScaleMode = mode;
+    const isAuto = mode === "auto" || mode === "compact";
+    btnDensityAuto.classList.toggle("active", isAuto);
+    btnDensityUncapped.classList.toggle("active", !isAuto);
+    if (btnDrawerGridAuto) btnDrawerGridAuto.classList.toggle("active", isAuto);
+    if (btnDrawerGridUncapped) btnDrawerGridUncapped.classList.toggle("active", !isAuto);
+    createMaze();
+  }
+
+  btnDensityAuto.addEventListener("click", () => setGridScaleMode("auto"));
+  btnDensityUncapped.addEventListener("click", () => setGridScaleMode("uncapped"));
+  if (btnDrawerGridAuto) btnDrawerGridAuto.addEventListener("click", () => setGridScaleMode("auto"));
+  if (btnDrawerGridUncapped) btnDrawerGridUncapped.addEventListener("click", () => setGridScaleMode("uncapped"));
+
+  // Complete Full Screen Focus Mode
+  function enterFocusMode() {
+    isFocusMode = true;
+    rootApp.classList.add("focus-mode");
+    focusHud.classList.remove("hidden");
+    if (document.documentElement.requestFullscreen) {
+      document.documentElement.requestFullscreen().catch(() => {});
+    }
+    rebuildStaticCacheAndRender();
+    updateTimerDisplay();
+  }
+
+  function exitFocusMode() {
+    isFocusMode = false;
+    rootApp.classList.remove("focus-mode");
+    focusHud.classList.add("hidden");
+    if (mobileDrawer) mobileDrawer.classList.add("hidden");
+    if (document.fullscreenElement && document.exitFullscreen) {
+      document.exitFullscreen().catch(() => {});
+    }
+    rebuildStaticCacheAndRender();
+    updateTimerDisplay();
+  }
+
+  function toggleFocusMode() {
+    if (isFocusMode) {
+      exitFocusMode();
     } else {
-      if (document.exitFullscreen) {
-        document.exitFullscreen().catch(() => {});
-      }
-      root.classList.remove("fullscreen");
+      enterFocusMode();
     }
   }
 
-  btnFullscreen.addEventListener("click", toggleFullscreen);
-  document.addEventListener("fullscreenchange", () => {
-    const root = document.getElementById("app");
-    if (document.fullscreenElement) {
-      btnFullscreen.textContent = "[ EXIT FULLSCREEN ]";
-    } else {
-      root.classList.remove("fullscreen");
-      btnFullscreen.textContent = "[ FULLSCREEN ]";
-    }
-    setTimeout(rebuildStaticCacheAndRender, 50);
+  btnFocus.addEventListener("click", toggleFocusMode);
+  btnExitFocus.addEventListener("click", exitFocusMode);
+  btnFocusRegen.addEventListener("click", () => createMaze());
+  btnFocusMenu.addEventListener("click", () => {
+    if (mobileDrawer) mobileDrawer.classList.remove("hidden");
   });
+  if (btnCloseDrawer) {
+    btnCloseDrawer.addEventListener("click", () => mobileDrawer.classList.add("hidden"));
+  }
+  if (btnDrawerExitFocus) {
+    btnDrawerExitFocus.addEventListener("click", exitFocusMode);
+  }
+  if (btnDrawerRegen) {
+    btnDrawerRegen.addEventListener("click", () => {
+      createMaze();
+      mobileDrawer.classList.add("hidden");
+    });
+  }
+  if (btnDrawerReset) {
+    btnDrawerReset.addEventListener("click", () => {
+      if (game) {
+        game.reset();
+        hudSteps.textContent = "0";
+        updateTimerDisplay();
+        renderDynamic();
+      }
+      mobileDrawer.classList.add("hidden");
+    });
+  }
+  if (btnDrawerSol) {
+    btnDrawerSol.addEventListener("click", () => {
+      showSolution = !showSolution;
+      btnToggleSolution.textContent = showSolution ? "[ HIDE SOLUTION ]" : "[ SHOW SOLUTION ]";
+      btnDrawerSol.textContent = showSolution ? "[ HIDE SOLUTION ]" : "[ SHOW SOLUTION ]";
+      renderDynamic();
+    });
+  }
+  if (btnDrawerExport) {
+    btnDrawerExport.addEventListener("click", () => {
+      mobileDrawer.classList.add("hidden");
+      openExportModal();
+    });
+  }
 
   // Win Actions
   btnNextLevel.addEventListener("click", () => {

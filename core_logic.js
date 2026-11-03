@@ -12,14 +12,17 @@
   "use strict";
 
   /**
-   * Calculates maze grid dimensions for a difficulty between 1 and 1000
+   * Calculates maze grid dimensions for a difficulty between 1 and 1000.
+   * On mobile viewports, grid is scaled more compactly (49x49 max instead of 101x101)
+   * so corridors remain wide, clear, and visible on smaller phone screens.
    */
-  function calcGridDimensions(difficulty) {
+  function calcGridDimensions(difficulty, isMobile) {
     const diff = Math.max(1, Math.min(1000, Math.floor(difficulty || 1)));
-    const cells = 2 + Math.floor(((diff - 1) * 48 + 499) / 999);
+    const maxCells = isMobile ? 24 : 50;
+    const cells = 2 + Math.floor(((diff - 1) * (maxCells - 2) + 499) / 999);
     const width = 2 * cells + 1;
     const height = 2 * cells + 1;
-    return { width, height, cells, difficulty: diff };
+    return { width, height, cells, difficulty: diff, isMobile: Boolean(isMobile) };
   }
 
   /**
@@ -171,6 +174,7 @@
 
     const {
       generate_maze,
+      generate_maze_scaled,
       get_grid_width,
       get_grid_height,
       get_grid_ptr,
@@ -185,9 +189,14 @@
     } = wasmModule.exports;
 
     return {
-      generate(difficulty, seed) {
+      generate(difficulty, seed, isMobile) {
         const seedVal = typeof seed === "bigint" ? seed : BigInt(seed || Date.now());
-        generate_maze(difficulty, seedVal);
+        if (typeof generate_maze_scaled === "function") {
+          const maxCells = isMobile ? 24 : 50;
+          generate_maze_scaled(difficulty, seedVal, maxCells);
+        } else {
+          generate_maze(difficulty, seedVal);
+        }
 
         const width = get_grid_width();
         const height = get_grid_height();
@@ -224,8 +233,8 @@
   /**
    * Pure JS maze generator fallback when WebAssembly is unavailable
    */
-  function generateJsMazeFallback(difficulty, seed) {
-    const { width, height, cells, difficulty: diff } = calcGridDimensions(difficulty);
+  function generateJsMazeFallback(difficulty, seed, isMobile) {
+    const { width, height, cells, difficulty: diff } = calcGridDimensions(difficulty, isMobile);
     let s = (seed ? Number(seed) : Date.now()) >>> 0;
     function randNext() {
       s = (s ^ (s << 13)) >>> 0;

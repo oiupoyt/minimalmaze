@@ -37,7 +37,7 @@
 
       <div class="quick-actions">
         <button id="btnCycleTimer" class="btn btn-sm" title="Cycle Timer Mode: Stopwatch / Countdown / Hidden (T)">[ TIMER: WATCH ]</button>
-        <button id="btnFullscreen" class="btn btn-sm" title="Toggle Fullscreen (F)">[ FULLSCREEN ]</button>
+        <button id="btnFocus" class="btn btn-primary btn-sm" title="Complete Full Screen Focus Mode (F)">[ FOCUS ]</button>
       </div>
     </header>
 
@@ -45,6 +45,21 @@
     <main class="workspace">
       <!-- Maze Canvas Viewport Container -->
       <section class="viewport-container" id="viewportContainer">
+        <!-- Floating Minimal Tactical Focus Bar (Shown only in Focus Mode) -->
+        <div class="focus-hud hidden" id="focusHud">
+          <div class="focus-hud-left">
+            <button id="btnExitFocus" class="btn btn-sm">[ EXIT FOCUS ]</button>
+          </div>
+          <div class="focus-hud-center">
+            <span class="focus-digits" id="focusTime">00:00.0</span>
+            <span class="focus-badge" id="focusDiffBadge">DIFF 050</span>
+          </div>
+          <div class="focus-hud-right">
+            <button id="btnFocusRegen" class="btn btn-sm">[ REGEN ]</button>
+            <button id="btnFocusMenu" class="btn btn-sm">[ MENU ]</button>
+          </div>
+        </div>
+
         <div class="canvas-wrapper" id="canvasWrapper">
           <canvas id="mazeCanvas"></canvas>
 
@@ -156,6 +171,17 @@
           </div>
         </div>
 
+        <!-- Grid Density Panel -->
+        <div class="deck-section">
+          <div class="section-header">
+            <span class="section-title">GRID DENSITY</span>
+          </div>
+          <div class="density-selector">
+            <button class="btn btn-mode active" id="btnDensityAuto">AUTO (MOBILE COMPACT)</button>
+            <button class="btn btn-mode" id="btnDensityUncapped">UNCAPPED (101x101)</button>
+          </div>
+        </div>
+
         <!-- Action Commands -->
         <div class="deck-section">
           <div class="section-header">
@@ -233,6 +259,51 @@
         <div class="modal-footer">
           <button id="btnConfirmDownload" class="btn btn-primary">[ DOWNLOAD PNG ]</button>
           <button id="btnCancelDownload" class="btn">[ CANCEL ]</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Mobile Tactical Drawer / Menu in Focus Mode -->
+    <div id="mobileDrawer" class="modal-backdrop hidden">
+      <div class="modal-dialog mobile-drawer-dialog">
+        <div class="modal-header">
+          <span class="modal-title">FOCUS SETTINGS & CONTROLS</span>
+          <button id="btnCloseDrawer" class="btn btn-sm">[ CLOSE ]</button>
+        </div>
+        <div class="modal-body drawer-body">
+          <div class="deck-section">
+            <div class="section-header">
+              <span class="section-title">DIFFICULTY (1-1000)</span>
+              <span class="diff-readout" id="drawerDiffDisplay">050</span>
+            </div>
+            <div class="slider-row">
+              <input type="range" id="drawerDiffSlider" min="1" max="1000" value="50" step="1">
+              <input type="number" id="drawerDiffInput" min="1" max="1000" value="50">
+            </div>
+            <div class="preset-group">
+              <button class="btn btn-preset" data-diff="1">001 TRIVIAL</button>
+              <button class="btn btn-preset" data-diff="50">050 NOVICE</button>
+              <button class="btn btn-preset" data-diff="200">200 ADEPT</button>
+              <button class="btn btn-preset" data-diff="500">500 MASTER</button>
+              <button class="btn btn-preset" data-diff="1000">1000 LABY</button>
+            </div>
+          </div>
+          <div class="deck-section">
+            <div class="section-header">
+              <span class="section-title">GRID DENSITY</span>
+            </div>
+            <div class="density-selector">
+              <button class="btn btn-mode active" id="btnDrawerGridAuto">AUTO (COMPACT)</button>
+              <button class="btn btn-mode" id="btnDrawerGridUncapped">UNCAPPED (101x101)</button>
+            </div>
+          </div>
+          <div class="action-grid" style="margin-top: 6px;">
+            <button id="btnDrawerRegen" class="btn btn-primary">[ REGENERATE (R) ]</button>
+            <button id="btnDrawerReset" class="btn">[ RESET TO START ]</button>
+            <button id="btnDrawerSol" class="btn">[ SHOW SOLUTION ]</button>
+            <button id="btnDrawerExport" class="btn">[ DOWNLOAD PNG ]</button>
+            <button id="btnDrawerExitFocus" class="btn">[ EXIT FOCUS MODE ]</button>
+          </div>
         </div>
       </div>
     </div>

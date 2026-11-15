@@ -272,6 +272,7 @@ html, body {
 }
 
 .edge-btn {
+  touch-action: none;
   position: absolute;
   pointer-events: auto;
   border: none;

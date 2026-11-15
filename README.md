@@ -17,6 +17,7 @@ A fast, low-latency, 2D top-down maze generation and solving web application. co
 
 - **Rust WebAssembly Core (`wasm32-unknown-unknown`)**: Wilson's algorithm (Uniform Spanning Tree) with loop-erased random walks and BFS pathfinder compiled directly to WebAssembly (< 32 KB binary, sub-millisecond generation).
 - **Hard Algorithmic Difficulty (1–1000)**: Dense labyrinth structures with zero directional bias and deepest dead-end exit placement, scaling from 5×5 up to 101×101 grids.
+- **Auto-run movement**: one press, swipe or tap runs the player down the corridor, around bends, and stops at a junction, dead end or the exit. Trail unwinds in O(1) when you backtrack.
 - **Intelligent Trail Tracking**: Electric cyan avatar (`#38bdf8`) with automated breadcrumb trail that automatically unwinds and prunes when backtracking out of dead ends.
 - **Subconscious Sub-Pixel Hairline Grid**: Subtle 1px grid overlay for instant spatial navigation without visual noise.
 - **Dedicated Chronometer**: Centered hero timer with Stopwatch, Countdown challenge, and Hidden zen modes.

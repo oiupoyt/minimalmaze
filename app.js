@@ -112,6 +112,9 @@
   let animFrameId = null;
   let lastTouchPos = null;
   let isFocusMode = false;
+  let viewCell = 0; // cell size in device pixels, set when the static layer is rebuilt
+  let viewDpr = 1;
+  let drawQueued = false;
   let gridScaleMode = "auto"; // "auto" (mobile compact) | "uncapped" (101x101 max)
 
   function getIsMobile() {
@@ -269,7 +272,7 @@
   function handleMove(direction) {
     if (!game || game.isWon || game.isTimeExpired()) return;
 
-    const result = game.move(direction);
+    const result = game.slide(direction);
     if (result.moved) {
       hudSteps.textContent = game.steps;
       renderDynamic();
@@ -339,6 +342,8 @@
     const w = currentMaze.width;
     const h = currentMaze.height;
     const drawCellSize = cellSize * dpr;
+    viewCell = drawCellSize;
+    viewDpr = dpr;
 
     // 1. Clear background (Passages)
     staticCtx.fillStyle = "#0a0a0a";
@@ -412,20 +417,27 @@
       Math.ceil(drawCellSize) - 1
     );
 
-    renderDynamic();
+    paintDynamic();
   }
 
   // Dynamic Layer: Blits cached static canvas and draws active trail and player cube (< 0.05ms)
   function renderDynamic() {
+    if (drawQueued) return;
+    drawQueued = true;
+    requestAnimationFrame(() => {
+      drawQueued = false;
+      paintDynamic();
+    });
+  }
+
+  function paintDynamic() {
     if (!currentMaze || !game) return;
 
     // 1. Instant GPU blit of entire static maze
     ctx.drawImage(staticCanvas, 0, 0);
 
-    const dpr = window.devicePixelRatio || 1;
-    const w = currentMaze.width;
-    const rect = canvas.getBoundingClientRect();
-    const cellSize = (rect.width * dpr) / w;
+    const dpr = viewDpr;
+    const cellSize = viewCell;
 
     // 2. Shortest Path Solution (Auto-revealed on win or when toggled)
     if (showSolution && currentMaze.solution && currentMaze.solution.length > 0) {
@@ -585,9 +597,11 @@
   function startHold(direction) {
     handleMove(direction);
     clearInterval(holdInterval);
+    // A slide already runs the whole corridor, so only re-fire after a pause
+    // (this lets a held button carry on through junctions).
     holdInterval = setInterval(() => {
       handleMove(direction);
-    }, 115);
+    }, 220);
   }
   function stopHold() {
     if (holdInterval) {

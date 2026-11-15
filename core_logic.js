@@ -41,6 +41,8 @@
     reset() {
       this.playerPos = [this.start[0], this.start[1]];
       this.trail = [[this.start[0], this.start[1]]];
+      this.trailIdx = new Int32Array(this.width * this.height).fill(-1);
+      this.trailIdx[this.start[1] * this.width + this.start[0]] = 0;
       this.steps = 0;
       this.isWon = false;
       this.startTime = null;
@@ -128,19 +130,18 @@
       this.playerPos = [nx, ny];
       this.steps += 1;
 
-      // Backtracking trail pruning:
-      // If stepping onto the previous tile in trail, pop the current tile
-      const prevTile = this.trail.length >= 2 ? this.trail[this.trail.length - 2] : null;
-      if (prevTile && prevTile[0] === nx && prevTile[1] === ny) {
-        this.trail.pop();
-      } else {
-        // If stepping onto any earlier visited tile on active path, prune back to that tile
-        const existingIdx = this.trail.findIndex((pt) => pt[0] === nx && pt[1] === ny);
-        if (existingIdx !== -1) {
-          this.trail = this.trail.slice(0, existingIdx + 1);
-        } else {
-          this.trail.push([nx, ny]);
+      // Backtracking trail pruning: stepping onto a tile already on the active
+      // path unwinds the trail back to it. trailIdx makes the lookup O(1).
+      const tIdx = ny * this.width + nx;
+      const existing = this.trailIdx[tIdx];
+      if (existing !== -1) {
+        while (this.trail.length > existing + 1) {
+          const [rx, ry] = this.trail.pop();
+          this.trailIdx[ry * this.width + rx] = -1;
         }
+      } else {
+        this.trailIdx[tIdx] = this.trail.length;
+        this.trail.push([nx, ny]);
       }
 
       // Check win condition
@@ -151,6 +152,47 @@
       }
 
       return { moved: true, won: false, pos: [...this.playerPos] };
+    }
+
+
+    /**
+     * Runs in one direction, following corridor bends, and stops at a
+     * junction (2+ ways forward), a dead end, the exit, or when time runs out.
+     */
+    slide(direction) {
+      const first = this.move(direction);
+      if (!first.moved || first.won) return first;
+
+      const DIRS = { UP: [0, -1], DOWN: [0, 1], LEFT: [-1, 0], RIGHT: [1, 0] };
+      const NAMES = Object.keys(DIRS);
+      let came = DIRS[direction.toUpperCase()] || null;
+      let last = first;
+
+      for (;;) {
+        const [x, y] = this.playerPos;
+        let forward = null;
+        let count = 0;
+        for (const name of NAMES) {
+          const [dx, dy] = DIRS[name];
+          if (came && dx === -came[0] && dy === -came[1]) continue; // where we came from
+          const nx = x + dx;
+          const ny = y + dy;
+          if (nx < 0 || nx >= this.width || ny < 0 || ny >= this.height) continue;
+          if (this.grid[ny * this.width + nx] !== 0) continue;
+          count += 1;
+          forward = name;
+        }
+        if (count !== 1) break; // dead end or junction
+        const step = this.move(forward);
+        if (!step.moved) {
+          if (step.expired) last = { ...last, expired: true };
+          break;
+        }
+        came = DIRS[forward];
+        last = step;
+        if (step.won) break;
+      }
+      return { moved: true, won: this.isWon, expired: Boolean(last.expired), pos: [...this.playerPos] };
     }
 
     getElapsedTimeMs() {

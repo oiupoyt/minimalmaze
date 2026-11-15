@@ -221,3 +221,72 @@ test("Mobile difficulty scaling creates compact, playable grid for 500-1000 laby
 
 
 
+
+// Slide (auto-run) tests. Layout, 1 = wall, 0 = path:
+//   1 1 1 1 1 1 1
+//   1 0 0 0 1 0 1     corridor (1,1)->(3,1), turns down at x=3
+//   1 1 1 0 1 0 1
+//   1 0 0 0 0 0 1     junction at (3,3): left, right, up
+//   1 0 1 1 1 0 1
+//   1 0 0 0 0 0 1
+//   1 1 1 1 1 1 1
+function slideMaze() {
+  const grid = new Uint8Array([
+    1, 1, 1, 1, 1, 1, 1,
+    1, 0, 0, 0, 1, 0, 1,
+    1, 1, 1, 0, 1, 0, 1,
+    1, 0, 0, 0, 0, 0, 1,
+    1, 0, 1, 1, 1, 0, 1,
+    1, 0, 0, 0, 0, 0, 1,
+    1, 1, 1, 1, 1, 1, 1,
+  ]);
+  return new GameEngine(7, 7, grid, [1, 1], [5, 5]);
+}
+
+test("slide follows a corridor around corners and stops at a junction", () => {
+  const game = slideMaze();
+  const res = game.slide("RIGHT");
+  assert.equal(res.moved, true);
+  assert.deepEqual(game.playerPos, [3, 3], "should stop where 2+ forward paths exist");
+  assert.equal(game.steps, 4, "(1,1)->(2,1)->(3,1)->(3,2)->(3,3)");
+});
+
+test("slide into a wall does not move", () => {
+  const game = slideMaze();
+  const res = game.slide("UP");
+  assert.equal(res.moved, false);
+  assert.equal(game.steps, 0);
+});
+
+test("slide stops at a dead end", () => {
+  const game = slideMaze();
+  game.slide("RIGHT");               // now at junction (3,3)
+  const res = game.slide("UP");      // (3,2),(3,1) then corner left to (1,1) dead end
+  assert.equal(res.moved, true);
+  assert.deepEqual(game.playerPos, [1, 1]);
+});
+
+test("slide stops on the exit and reports a win", () => {
+  const game = slideMaze();
+  game.slide("RIGHT");                 // (3,3)
+  const res = game.slide("RIGHT");     // (4,3),(5,3) is a junction (up/down)
+  assert.deepEqual(game.playerPos, [5, 3]);
+  const res2 = game.slide("DOWN");     // (5,4),(5,5)=exit
+  assert.equal(res2.won, true);
+  assert.equal(game.isWon, true);
+  assert.deepEqual(game.playerPos, [5, 5]);
+  assert.equal(res.moved, true);
+});
+
+test("slide round trip prunes the trail back to the original path", () => {
+  const game = slideMaze();
+  game.slide("RIGHT");               // (1,1) -> junction (3,3)
+  const outbound = game.trail.map((t) => t.join(","));
+  game.slide("UP");                  // back up the corridor to the dead end (1,1)
+  assert.deepEqual(game.playerPos, [1, 1]);
+  assert.deepEqual(game.trail, [[1, 1]], "backtracking to start leaves only the start tile");
+  game.slide("RIGHT");               // run to the junction again
+  assert.deepEqual(game.trail.map((t) => t.join(",")), outbound);
+  const seen = new Set(game.trail.map((t) => t.join(",")));
+  assert.equal(seen.size, game.trail.length, "trail must not contain duplicates");
+});

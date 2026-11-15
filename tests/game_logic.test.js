@@ -290,3 +290,12 @@ test("slide round trip prunes the trail back to the original path", () => {
   const seen = new Set(game.trail.map((t) => t.join(",")));
   assert.equal(seen.size, game.trail.length, "trail must not contain duplicates");
 });
+
+test("static assets and wasm fetch carry a cache-busting version", () => {
+  const html = fs.readFileSync(path.resolve(__dirname, "../index.html"), "utf8");
+  const appJs = fs.readFileSync(path.resolve(__dirname, "../app.js"), "utf8");
+  for (const f of ["style.css", "wasm_embedded.js", "core_logic.js", "app.js"]) {
+    assert.match(html, new RegExp(`(?:src|href)="${f.replace(".", "\\.")}\\?v=[^"]+"`), `${f} must be versioned`);
+  }
+  assert.match(appJs, /fetch\("engine\.wasm"\s*\+/, "engine.wasm fetch must append the version");
+});

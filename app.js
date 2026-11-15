@@ -4,6 +4,9 @@
 (function () {
   "use strict";
 
+  // Same stamp index.html puts on its own assets, so wasm refreshes with the page.
+  const ASSET_VERSION = (document.currentScript && document.currentScript.src.match(/\?v=[^&]+/) || [""])[0];
+
   const { calcGridDimensions, GameEngine, loadWasmEngine, generateJsMazeFallback, calcEfficiency } =
     window.MinimalMazeCore;
 
@@ -150,7 +153,7 @@
   async function initWasm() {
     // 1. Try streaming/fetch of engine.wasm
     try {
-      const response = await fetch("engine.wasm");
+      const response = await fetch("engine.wasm" + ASSET_VERSION);
       if (response.ok) {
         const bytes = await response.arrayBuffer();
         wasmEngine = await loadWasmEngine(bytes);

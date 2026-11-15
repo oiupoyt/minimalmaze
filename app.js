@@ -7,7 +7,7 @@
   // Same stamp index.html puts on its own assets, so wasm refreshes with the page.
   const ASSET_VERSION = (document.currentScript && document.currentScript.src.match(/\?v=[^&]+/) || [""])[0];
 
-  const { calcGridDimensions, GameEngine, loadWasmEngine, generateJsMazeFallback, calcEfficiency } =
+  const { calcGridDimensions, GameEngine, loadWasmEngine, generateJsMazeFallback, calcEfficiency, stepTrail } =
     window.MinimalMazeCore;
 
   // DOM Elements
@@ -223,6 +223,95 @@
     else setTimerMode("stopwatch");
   }
 
+
+  // ---- Move animation -------------------------------------------------------
+  // Game state updates instantly (logic never waits on the screen). The screen
+  // replays each slide cell by cell: the cube glides along the real path and the
+  // drawn trail extends only as it passes each tile, unwinding on backtrack.
+  const CELLS_PER_SEC = 30;       // glide speed: a 4-cell run takes ~130ms, visible but not sluggish
+  const MAX_RUN_MS = 460;         // a very long run speeds up rather than dragging
+  const reduceMotion = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  const anim = {
+    trail: [],            // trail as currently drawn
+    idx: null,            // tile -> index in anim.trail
+    x: 0, y: 0,           // cube position in cell units (fractional while gliding)
+    queue: [],            // cells still to walk: [[x, y], ...]
+    from: null, to: null, // current segment endpoints
+    t: 0,                 // 0..1 progress along the current segment
+    speed: CELLS_PER_SEC,
+    epoch: -1,
+    running: false,
+    last: 0,
+  };
+
+  // Snap the drawn state to the real game state (new maze, reset, resize, win).
+  function animSync() {
+    anim.epoch = game.epoch;
+    anim.trail = game.trail.map((t) => [t[0], t[1]]);
+    anim.idx = new Int32Array(game.width * game.height).fill(-1);
+    anim.trail.forEach(([x, y], i) => { anim.idx[y * game.width + x] = i; });
+    anim.x = game.playerPos[0];
+    anim.y = game.playerPos[1];
+    anim.queue.length = 0;
+    anim.from = anim.to = null;
+    anim.running = false;
+  }
+
+  function animEnqueue(path) {
+    if (!path || !path.length) return;
+    if (reduceMotion || anim.epoch !== game.epoch) { animSync(); return; }
+    for (const c of path) anim.queue.push(c);
+    // keep total drain time bounded: more queued cells -> faster glide
+    const need = (anim.queue.length / CELLS_PER_SEC) * 1000;
+    anim.speed = need > MAX_RUN_MS ? (anim.queue.length / MAX_RUN_MS) * 1000 : CELLS_PER_SEC;
+    if (!anim.running) {
+      anim.running = true;
+      anim.last = performance.now();
+      requestAnimationFrame(animTick);
+    }
+  }
+
+  function animTick(now) {
+    if (!game || anim.epoch !== game.epoch) { animSync(); paintDynamic(); return; }
+    let budget = Math.min(0.05, (now - anim.last) / 1000) * anim.speed; // cells to travel this frame
+    anim.last = now;
+
+    while (budget > 0) {
+      if (!anim.to) {
+        const next = anim.queue.shift();
+        if (!next) break;
+        anim.from = [anim.x, anim.y];
+        anim.to = next;
+        anim.t = 0;
+      }
+      const remaining = 1 - anim.t;
+      const step = Math.min(budget, remaining);
+      anim.t += step;
+      budget -= step;
+      anim.x = anim.from[0] + (anim.to[0] - anim.from[0]) * anim.t;
+      anim.y = anim.from[1] + (anim.to[1] - anim.from[1]) * anim.t;
+      if (anim.t >= 1) {
+        anim.x = anim.to[0];
+        anim.y = anim.to[1];
+        stepTrail(anim.trail, anim.idx, game.width, anim.to[0], anim.to[1]);
+        anim.to = null;
+      }
+    }
+
+    paintDynamic();
+
+    if (anim.to || anim.queue.length) {
+      requestAnimationFrame(animTick);
+    } else {
+      anim.running = false;
+      anim.speed = CELLS_PER_SEC;
+      if (animDone) { const f = animDone; animDone = null; f(); }
+    }
+  }
+
+  let animDone = null; // runs once the glide finishes (win / time-out banners)
+
   // Generate Maze & Reset Game State
   function createMaze(difficulty) {
     currentDifficulty = Math.max(1, Math.min(1000, Math.floor(difficulty || currentDifficulty)));
@@ -232,6 +321,7 @@
     const seed = BigInt(Math.floor(Math.random() * 1000000000) + 1);
     currentMaze = wasmEngine.generate(currentDifficulty, seed, isMobile);
 
+    animDone = null;
     game = new GameEngine(
       currentMaze.width,
       currentMaze.height,
@@ -243,6 +333,7 @@
     // Auto-update countdown limit if in auto mode
     countdownLimitSec = parseInt(countdownLimitInput.value, 10) || getAutoCountdownSec(currentDifficulty);
     countdownLimitInput.value = countdownLimitSec;
+    animSync();
     game.setTimerMode(timerMode, countdownLimitSec * 1000);
 
     showSolution = false;
@@ -275,17 +366,40 @@
   function handleMove(direction) {
     if (!game || game.isWon || game.isTimeExpired()) return;
 
+    // After a reset or a new maze the drawn state is stale: snap to the state
+    // *before* this move so the move itself still animates.
+    if (anim.epoch !== game.epoch) animSync();
+
     const result = game.slide(direction);
     if (result.moved) {
       hudSteps.textContent = game.steps;
+      animEnqueue(result.path);
       renderDynamic();
 
       if (result.won) {
-        onGameWin();
+        whenGlideDone(onGameWin);
+      } else if (result.expired) {
+        whenGlideDone(onTimeExpired);
       }
     } else if (result.expired) {
-      onTimeExpired();
+      whenGlideDone(onTimeExpired);
     }
+  }
+
+  // Every restart goes through here: the engine resets, the drawn state snaps to
+  // it, and any banner waiting on a glide is cancelled so it cannot fire late.
+  function resetGame() {
+    animDone = null;
+    game.reset();
+    animSync();
+  }
+
+  // Run fn once the cube has finished gliding (immediately if it is idle), so the
+  // win / time-out banner never covers the move that caused it.
+  function whenGlideDone(fn) {
+    if (!anim.running) { fn(); return; }
+    const prev = animDone;
+    animDone = prev ? () => { prev(); fn(); } : fn;
   }
 
   function onGameWin() {
@@ -459,11 +573,12 @@
       ctx.stroke();
     }
 
-    // 3. Player Trail (Prunes automatically on backtrack)
-    if (game.trail && game.trail.length > 1) {
+    // 3. Player Trail (drawn state: lags the real trail while gliding, unwinds on backtrack)
+    const trail = anim.epoch === game.epoch ? anim.trail : game.trail;
+    if (trail && trail.length > 1) {
       ctx.fillStyle = "rgba(56, 189, 248, 0.24)";
-      for (let i = 0; i < game.trail.length; i++) {
-        const [tx, ty] = game.trail[i];
+      for (let i = 0; i < trail.length; i++) {
+        const [tx, ty] = trail[i];
         ctx.fillRect(
           Math.floor(tx * cellSize),
           Math.floor(ty * cellSize),
@@ -477,8 +592,8 @@
       ctx.lineCap = "square";
       ctx.lineJoin = "miter";
       ctx.beginPath();
-      for (let i = 0; i < game.trail.length; i++) {
-        const [tx, ty] = game.trail[i];
+      for (let i = 0; i < trail.length; i++) {
+        const [tx, ty] = trail[i];
         const px = (tx + 0.5) * cellSize;
         const py = (ty + 0.5) * cellSize;
         if (i === 0) ctx.moveTo(px, py);
@@ -488,11 +603,13 @@
     }
 
     // 4. Player Cube (Simplified, razor-sharp clean solid cyan square)
-    const [px, py] = game.playerPos;
+    const drawn = anim.epoch === game.epoch;
+    const px = drawn ? anim.x : game.playerPos[0];
+    const py = drawn ? anim.y : game.playerPos[1];
     const pMargin = Math.max(1 * dpr, cellSize * 0.14);
     const pSize = Math.max(2 * dpr, cellSize - 2 * pMargin);
-    const playerLeft = Math.floor(px * cellSize + pMargin);
-    const playerTop = Math.floor(py * cellSize + pMargin);
+    const playerLeft = Math.round(px * cellSize + pMargin);
+    const playerTop = Math.round(py * cellSize + pMargin);
 
     ctx.fillStyle = "#38bdf8";
     ctx.fillRect(playerLeft, playerTop, pSize, pSize);
@@ -707,7 +824,7 @@
   btnRegenerate.addEventListener("click", () => createMaze());
   btnResetPlayer.addEventListener("click", () => {
     if (game) {
-      game.reset();
+      resetGame();
       hudSteps.textContent = "0";
       updateTimerDisplay();
       winBanner.classList.add("hidden");
@@ -745,7 +862,7 @@
 
   btnRetryExpired.addEventListener("click", () => {
     if (game) {
-      game.reset();
+      resetGame();
       expiredBanner.classList.add("hidden");
       heroTimerContainer.classList.remove("warning");
       hudSteps.textContent = "0";
@@ -757,7 +874,7 @@
   btnSwitchStopwatch.addEventListener("click", () => {
     setTimerMode("stopwatch");
     if (game) {
-      game.reset();
+      resetGame();
       expiredBanner.classList.add("hidden");
       heroTimerContainer.classList.remove("warning");
       hudSteps.textContent = "0";
@@ -873,7 +990,7 @@
   if (btnDrawerReset) {
     btnDrawerReset.addEventListener("click", () => {
       if (game) {
-        game.reset();
+        resetGame();
         hudSteps.textContent = "0";
         updateTimerDisplay();
         renderDynamic();
@@ -903,7 +1020,7 @@
   });
   btnPlayAgain.addEventListener("click", () => {
     if (game) {
-      game.reset();
+      resetGame();
       winBanner.classList.add("hidden");
       hudSteps.textContent = "0";
       showSolution = false;

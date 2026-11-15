@@ -26,6 +26,26 @@
   }
 
   /**
+   * The one place the trail rule lives. Stepping onto a tile already on the
+   * active path unwinds the trail back to it; otherwise the tile is appended.
+   * `idx` maps tile -> position in `trail` (-1 = absent) so lookups are O(1).
+   * The engine and the animation renderer both call this, so they cannot drift.
+   */
+  function stepTrail(trail, idx, width, x, y) {
+    const i = y * width + x;
+    const existing = idx[i];
+    if (existing !== -1) {
+      while (trail.length > existing + 1) {
+        const [rx, ry] = trail.pop();
+        idx[ry * width + rx] = -1;
+      }
+    } else {
+      idx[i] = trail.length;
+      trail.push([x, y]);
+    }
+  }
+
+  /**
    * Game state engine tracking player position, trail history, steps, and win state
    */
   class GameEngine {
@@ -39,6 +59,7 @@
     }
 
     reset() {
+      this.epoch = (this.epoch || 0) + 1;
       this.playerPos = [this.start[0], this.start[1]];
       this.trail = [[this.start[0], this.start[1]]];
       this.trailIdx = new Int32Array(this.width * this.height).fill(-1);
@@ -130,19 +151,7 @@
       this.playerPos = [nx, ny];
       this.steps += 1;
 
-      // Backtracking trail pruning: stepping onto a tile already on the active
-      // path unwinds the trail back to it. trailIdx makes the lookup O(1).
-      const tIdx = ny * this.width + nx;
-      const existing = this.trailIdx[tIdx];
-      if (existing !== -1) {
-        while (this.trail.length > existing + 1) {
-          const [rx, ry] = this.trail.pop();
-          this.trailIdx[ry * this.width + rx] = -1;
-        }
-      } else {
-        this.trailIdx[tIdx] = this.trail.length;
-        this.trail.push([nx, ny]);
-      }
+      stepTrail(this.trail, this.trailIdx, this.width, nx, ny);
 
       // Check win condition
       if (nx === this.end[0] && ny === this.end[1]) {
@@ -161,7 +170,9 @@
      */
     slide(direction) {
       const first = this.move(direction);
-      if (!first.moved || first.won) return first;
+      if (!first.moved) return { ...first, path: [] };
+      const path = [[...this.playerPos]];
+      if (first.won) return { ...first, path };
 
       const DIRS = { UP: [0, -1], DOWN: [0, 1], LEFT: [-1, 0], RIGHT: [1, 0] };
       const NAMES = Object.keys(DIRS);
@@ -190,9 +201,10 @@
         }
         came = DIRS[forward];
         last = step;
+        path.push([...this.playerPos]);
         if (step.won) break;
       }
-      return { moved: true, won: this.isWon, expired: Boolean(last.expired), pos: [...this.playerPos] };
+      return { moved: true, won: this.isWon, expired: Boolean(last.expired), pos: [...this.playerPos], path };
     }
 
     getElapsedTimeMs() {
@@ -430,6 +442,7 @@
     loadWasmEngine,
     generateJsMazeFallback,
     calcEfficiency,
+    stepTrail,
   };
 });
 

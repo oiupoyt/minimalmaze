@@ -10,6 +10,7 @@ const {
   loadWasmEngine,
   generateJsMazeFallback,
   calcEfficiency,
+  stepTrail,
 } = require("../core_logic.js");
 
 test("Difficulty scaling calculations", () => {
@@ -298,4 +299,39 @@ test("static assets and wasm fetch carry a cache-busting version", () => {
     assert.match(html, new RegExp(`(?:src|href)="${f.replace(".", "\\.")}\\?v=[^"]+"`), `${f} must be versioned`);
   }
   assert.match(appJs, /fetch\("engine\.wasm"\s*\+/, "engine.wasm fetch must append the version");
+});
+
+test("slide reports every cell it walked, in order", () => {
+  const game = slideMaze();
+  const res = game.slide("RIGHT");
+  assert.deepEqual(res.path, [[2, 1], [3, 1], [3, 2], [3, 3]]);
+  assert.equal(res.path.length, game.steps);
+  assert.deepEqual(res.path[res.path.length - 1], game.playerPos);
+});
+
+test("a blocked slide reports an empty path", () => {
+  const game = slideMaze();
+  const res = game.slide("UP");
+  assert.deepEqual(res.path, [], "blocked move must report an empty array, not undefined");
+});
+
+test("replaying slide paths through stepTrail reproduces the real trail", () => {
+  const game = slideMaze();
+  const idx = new Int32Array(7 * 7).fill(-1);
+  const trail = [[1, 1]];
+  idx[1 * 7 + 1] = 0;
+  for (const dir of ["RIGHT", "UP", "RIGHT", "LEFT", "DOWN", "RIGHT", "DOWN"]) {
+    const res = game.slide(dir);
+    for (const [x, y] of res.path || []) stepTrail(trail, idx, 7, x, y);
+    assert.deepEqual(trail, game.trail, `trail diverged after ${dir}`);
+  }
+});
+
+test("reset bumps epoch so the renderer can drop in-flight animation", () => {
+  const game = slideMaze();
+  const before = game.epoch;
+  game.slide("RIGHT");
+  assert.equal(game.epoch, before, "moving must not change the epoch");
+  game.reset();
+  assert.notEqual(game.epoch, before);
 });
